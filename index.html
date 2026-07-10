@@ -445,12 +445,26 @@
     <div class="form-group">
       <label class="form-label">🔒 הגבלת כניסת דיירים לאפליקציה</label>
       <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px;line-height:1.6;">
-        כשמופעל: משתמשים שמוגדרים כ"דייר" (לא ועד בית ולא בעלים) לא יוכלו להתחבר לאפליקציה בכלל ויקבלו הודעה מתאימה. ועד הבית, מנהלים משותפים (co-admins) ובעלי הבניין ימשיכו להתחבר כרגיל, בכל הבניינים. הגדרה זו חלה על כל הבניינים במערכת.
+        כשמופעל: משתמשים שמוגדרים כ"דייר" (לא ועד בית ולא ראש ועד) לא יוכלו להתחבר לאפליקציה בכלל ויקבלו הודעה מתאימה. ועד הבית, מנהלים משותפים (co-admins) וראשי הבניינים ימשיכו להתחבר כרגיל, בכל הבניינים. הגדרה זו חלה על כל הבניינים במערכת.
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <input type="checkbox" id="input-tenant-login-toggle" style="width:22px;height:22px;cursor:pointer;" onchange="saveTenantLoginToggle()"/>
         <label for="input-tenant-login-toggle" style="cursor:pointer;font-weight:600;">חסום כניסת דיירים לאפליקציה</label>
       </div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #eee;margin:16px 0;"/>
+
+    <div class="form-group">
+      <label class="form-label">👥 מספר חברי ועד נוספים מקסימלי לבניין</label>
+      <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px;line-height:1.6;">
+        כמה דיירים אפשר להגדיר כ"חבר ועד" (מעבר לראש הועד) באותו בניין. ברירת המחדל היא 1 — אפשר להגדיל אם רוצים לתמוך בוועדים גדולים יותר.
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input class="form-input" id="input-max-co-admins" type="number" min="1" style="flex:1;"/>
+        <button class="btn-success" onclick="saveMaxCoAdmins()">שמור</button>
+      </div>
+      <div id="max-co-admins-note" style="font-size:12px;margin-top:4px;"></div>
     </div>
 
     <hr style="border:none;border-top:1px solid #eee;margin:16px 0;"/>
@@ -622,7 +636,7 @@
   <div style="font-size:52px;margin-bottom:16px;">🔒</div>
   <div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:10px;">כניסת דיירים אינה זמינה כרגע</div>
   <div style="color:rgba(255,255,255,0.75);font-size:14px;line-height:1.7;margin-bottom:28px;max-width:320px;">
-    הגישה לאפליקציה זמנית זמינה לועד הבית ולבעלי הבניין בלבד. לפרטים נוספים פנה/י לוועד הבית שלך.
+    הגישה לאפליקציה זמנית זמינה לועד הבית ולראשי הבניין בלבד. לפרטים נוספים פנה/י לוועד הבית שלך.
   </div>
   <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:12px;">
     <button class="btn-secondary" style="background:transparent;color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.3);" onclick="logout()">התנתק</button>
@@ -641,7 +655,7 @@
           <div class="home-name" id="home-name">טוען...</div>
           <div id="home-address" style="font-size:12px; opacity:0.75; margin-top:2px;"></div>
         </div>
-        <div id="home-building-icon" style="width:52px; height:52px; background:rgba(255,255,255,0.15); border-radius:16px; display:flex; align-items:center; justify-content:center; font-size:28px;">🏢</div>
+        <div id="home-building-icon" style="width:52px; height:52px; display:flex; align-items:center; justify-content:center; font-size:28px;">🏢</div>
         <button class="btn-logout" onclick="logout()" style="justify-self:end;">יציאה <span style="font-size:10px;opacity:0.6;">v<span id="app-version-home"></span></span></button>
       </div>
     </div>
@@ -713,8 +727,7 @@
     <div class="screen-header">
       <div class="screen-title">דיירים</div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <span id="residents-admin-badge" style="display:none" class="admin-chip">מנהל</span>
-        <button id="btn-add-resident" style="display:none" class="btn-icon" onclick="openAddResident()">+ הוסף</button>
+        <button id="btn-add-resident" style="display:none" class="btn-icon" onclick="openAddResident()">+ הוסף דייר</button>
       </div>
     </div>
 
@@ -752,7 +765,7 @@
             <thead>
               <tr>
                 <th>דירה</th>
-                
+                <th>שם</th>
                 <th>קומה</th>
                 <th>טלפון</th>
                 <th>סוג</th>
@@ -924,7 +937,7 @@
       <label class="form-label">תפקיד</label>
       <select class="form-select" id="r-role">
         <option value="tenant">דייר</option>
-        <option value="admin">ועד בית / מנהל</option>
+        <option value="admin">חבר ועד</option>
       </select>
       <div id="r-role-note" style="font-size:11px;color:var(--gray-400);margin-top:4px;"></div>
     </div>
@@ -1170,12 +1183,12 @@
       <hr style="border:none;border-top:1px solid #eee;margin:4px 0;"/>
       <div id="ownership-transfer-section" style="display:none;">
         <div class="form-group" style="margin:0;">
-          <label class="form-label">👑 בעלות על הבניין</label>
+          <label class="form-label">👑 ראשות הועד</label>
           <div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;">
-            המנהל הראשי הרשום כרגע: <span id="current-owner-name" style="font-weight:600;color:var(--gray-800);"></span>.
-            אם המנהל הראשי כבר לא זמין או לא פעיל, תוכל/י לקחת בעלות מלאה על הבניין. פעולה זו תסיר את גישת המנהל הקודם לצמיתות.
+            ראש הועד הרשום כרגע: <span id="current-owner-name" style="font-weight:600;color:var(--gray-800);"></span>.
+            אם ראש הועד כבר לא זמין או לא פעיל, תוכל/י לקחת ראשות מלאה על הבניין. פעולה זו תסיר את גישת ראש הועד הקודם לצמיתות.
           </div>
-          <button class="btn-secondary" style="color:#d33;border-color:#d33;width:100%;" onclick="closeAdminFinance();transferOwnershipToMe();">👑 קבל/י בעלות מלאה על הבניין</button>
+          <button class="btn-secondary" style="color:#d33;border-color:#d33;width:100%;" onclick="closeAdminFinance();transferOwnershipToMe();">👑 קבל/י ראשות על הבניין</button>
         </div>
         <hr style="border:none;border-top:1px solid #eee;margin:12px 0 4px;"/>
       </div>
@@ -1496,6 +1509,10 @@ const HEBREW_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי
 // previously duplicated 3x in the file with identical contents.
 const EXPENSE_CATEGORY_ICONS = { חשמל:'⚡', מים:'💧', ניקיון:'🧹', מעלית:'🛗', ביטוח:'🛡️', 'כיבוי אש':'🚒', 'עמלות בנק':'🏦', תיקון:'🔧', גינון:'🌿', אחר:'📋' };
 
+// Shared across renderHistoryGrid(), renderPayments() (pay-paid-list ותצוגת דייר) ו-po-table —
+// אותם אייקונים בדיוק כמו ב-dropdown של p-method/r-payment-method
+const PAYMENT_METHOD_ICONS = { transfer: '💳', standingOrder: '🔁', cash: '💵', check: '🧾' };
+
 function monthLabel(ym) {
   // ym = "2026-06"
   const [y, m] = ym.split('-');
@@ -1783,17 +1800,26 @@ const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const MY_BUILDING_ADDRESS = 'זרחין 10, רעננה ';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
-let trialDaysSetting = TRIAL_DAYS; // Effective trial length in days, loaded from meta/settings.trialDays on app load (see loadTrialDaysSetting()).
+const MAX_CO_ADMINS_DEFAULT = 1; // Default fallback if meta/settings.maxCoAdmins doesn't exist yet — matches the original hardcoded "1 additional committee member" limit.
+let trialDaysSetting = TRIAL_DAYS; // Effective trial length in days, loaded from meta/settings.trialDays on app load (see loadSessionSettings()).
+let maxCoAdminsSetting = MAX_CO_ADMINS_DEFAULT; // Effective max number of additional committee members (beyond the primary admin) allowed per building, loaded from meta/settings.maxCoAdmins.
 
-// Reads the Super-Admin-configurable trial length from meta/settings and
-// updates trialDaysSetting accordingly. Called once per session in loadAll()
-// so isInTrialPeriod()/trialDaysRemaining() (which run synchronously) always
-// use an up-to-date value without needing to be async themselves.
-async function loadTrialDaysSetting() {
+// Reads Super-Admin-configurable session-wide settings (trial length, max
+// committee members) from meta/settings in a single read and updates the
+// corresponding runtime variables. Called once per session in loadAll() so
+// the various sync helpers that use these values always have an up-to-date
+// number without needing to be async themselves. (Renamed from
+// loadTrialDaysSetting() now that it covers more than just the trial length.)
+async function loadSessionSettings() {
   try {
     const snap = await getDoc(doc(db, 'meta', 'settings'));
-    trialDaysSetting = snap.exists() ? (snap.data().trialDays ?? TRIAL_DAYS) : TRIAL_DAYS;
-  } catch(e) { trialDaysSetting = TRIAL_DAYS; }
+    const settings = snap.exists() ? snap.data() : {};
+    trialDaysSetting = settings.trialDays ?? TRIAL_DAYS;
+    maxCoAdminsSetting = settings.maxCoAdmins ?? MAX_CO_ADMINS_DEFAULT;
+  } catch(e) {
+    trialDaysSetting = TRIAL_DAYS;
+    maxCoAdminsSetting = MAX_CO_ADMINS_DEFAULT;
+  }
 }
 
 // Display-only tiered pricing by apartment count (Stage 2 planning — no
@@ -1999,6 +2025,7 @@ window.openSystemSettings = async () => {
     const aptTier2Max = settings.aptTier2Max ?? 40;
     const aptTier2Price = settings.aptTier2Price ?? 149;
     const aptTier3Price = settings.aptTier3Price ?? 219;
+    const maxCoAdmins = settings.maxCoAdmins ?? MAX_CO_ADMINS_DEFAULT;
 
     document.getElementById('settings-current-count').textContent = currentCount;
     document.getElementById('input-beta-limit').value = limit;
@@ -2012,6 +2039,7 @@ window.openSystemSettings = async () => {
     document.getElementById('input-apt-tier2-max').value = aptTier2Max;
     document.getElementById('input-apt-tier2-price').value = aptTier2Price;
     document.getElementById('input-apt-tier3-price').value = aptTier3Price;
+    document.getElementById('input-max-co-admins').value = maxCoAdmins;
   } catch(e) {
     showToast('שגיאה בטעינת ההגדרות: ' + e.message);
   }
@@ -2033,6 +2061,19 @@ window.saveBetaLimit = async () => {
     note.textContent = `✅ נשמר: ${newLimit} בניינים`;
     note.style.color = 'var(--green)';
     showToast('✅ מגבלת הבניינים עודכנה');
+  } catch(e) { showToast('שגיאה: ' + e.message); }
+};
+
+window.saveMaxCoAdmins = async () => {
+  const newMax = parseInt(document.getElementById('input-max-co-admins').value);
+  const note = document.getElementById('max-co-admins-note');
+  if (!newMax || newMax < 1) { showToast('הכנס מספר תקין'); return; }
+  try {
+    await setDoc(doc(db, 'meta', 'settings'), { maxCoAdmins: newMax }, { merge: true });
+    maxCoAdminsSetting = newMax; // עדכן מיידית גם עבור הבניין הנוכחי בסשן הזה
+    note.textContent = `✅ נשמר: ${newMax} חברי ועד נוספים מקסימום`;
+    note.style.color = 'var(--green)';
+    showToast('✅ המגבלה עודכנה');
   } catch(e) { showToast('שגיאה: ' + e.message); }
 };
 
@@ -2139,7 +2180,7 @@ window.enterSupervisorMode = async () => {
           <input type="checkbox" class="building-chk" data-id="${b.id}" style="width:20px;height:20px;cursor:pointer;flex-shrink:0;" onchange="updateBackupBtn()"/>
           <div style="flex:1;cursor:pointer;min-width:0;" onclick="enterBuildingAsViewer('${b.id}')">
             <div style="font-weight:700;font-size:15px;text-align:right;">${b.address || 'בניין ללא כתובת'}</div>
-            <div style="font-size:12px;color:var(--gray-400);text-align:right;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">מנהל: ${b.adminName || ''} • ${b.adminEmail || ''}</div>
+            <div style="font-size:12px;color:var(--gray-400);text-align:right;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">ראש ועד: ${b.adminName || ''} • ${b.adminEmail || ''}</div>
           </div>
         </div>
       </div>
@@ -2248,7 +2289,7 @@ window.executeRestoreBuilding = async (event) => {
       return;
     }
 
-    if (!(await customConfirm(`שחזור בניין:\n${info.address}\nמנהל: ${info.adminName} (${info.adminEmail})\n\nלהמשיך?`))) return;
+    if (!(await customConfirm(`שחזור בניין:\n${info.address}\nראש ועד: ${info.adminName} (${info.adminEmail})\n\nלהמשיך?`))) return;
 
     closeModal('modal-restore-building');
     showToast('יוצר בניין...');
@@ -2421,16 +2462,20 @@ function initUI() {
   logAnalyticsEvent('app_open', { role: auth.currentUser?.email === SUPER_ADMIN_EMAIL ? 'super_admin' : (currentUser.role || 'unknown') });
 
   // Admin controls
-  // כתר ל-Super Admin בלבד
+  // כתר לחיץ ל-Super Admin בלבד; משתמש רגיל רואה רק אייקון בניין ניטרלי (בלי מראה כפתור)
   const buildingIcon = document.getElementById('home-building-icon');
   if (buildingIcon) {
     if (auth.currentUser?.email === 'vaadplus100@gmail.com') {
       buildingIcon.innerHTML = '👑';
       buildingIcon.style.cursor = 'pointer';
+      buildingIcon.style.background = 'rgba(255,255,255,0.15)';
+      buildingIcon.style.borderRadius = '16px';
       buildingIcon.onclick = () => resetAllData();
     } else {
       buildingIcon.innerHTML = '🏢';
       buildingIcon.style.cursor = 'default';
+      buildingIcon.style.background = 'none';
+      buildingIcon.style.borderRadius = '0';
       buildingIcon.onclick = null;
     }
   }
@@ -2440,7 +2485,6 @@ function initUI() {
     document.getElementById('btn-admin-finance').style.display = '';
     document.getElementById('btn-add-announce').style.display = '';
     document.getElementById('fab-issue').classList.add('visible');
-    document.getElementById('residents-admin-badge').style.display = '';
     document.getElementById('issues-admin-badge').style.display = '';
     document.getElementById('th-actions').style.display = '';
     // backup-section הועבר לתפריט מנהל
@@ -2486,7 +2530,7 @@ window.addEventListener('popstate', (e) => {
 // ===== LOAD ALL =====
 function loadAll() {
   navigate('home');
-  loadTrialDaysSetting();
+  loadSessionSettings();
   loadResidents();
   loadIssues();
   loadAnnouncements();
@@ -2589,12 +2633,12 @@ function updateRoleNote(excludeId) {
   const otherAdminsCount = allResidents.filter(r => r.role === 'admin' && r.id !== excludeId).length;
   const note = document.getElementById('r-role-note');
   const adminOption = document.querySelector('#r-role option[value="admin"]');
-  if (otherAdminsCount >= 1) {
-    note.textContent = `⚠️ הגעת למקסימום של דייר אחד כועד נוסף בבניין הזה (${otherAdminsCount}/1)`;
+  if (otherAdminsCount >= maxCoAdminsSetting) {
+    note.textContent = `⚠️ הגעת למקסימום חברי הועד הנוסף בבניין הזה (${otherAdminsCount}/${maxCoAdminsSetting})`;
     note.style.color = 'var(--red)';
     if (adminOption) adminOption.disabled = true;
   } else {
-    note.textContent = `דייר נוסף כועד בבניין: ${otherAdminsCount}/1`;
+    note.textContent = `דייר נוסף כחבר ועד בבניין: ${otherAdminsCount}/${maxCoAdminsSetting}`;
     note.style.color = 'var(--gray-400)';
     if (adminOption) adminOption.disabled = false;
   }
@@ -2604,14 +2648,19 @@ window.openAddResident = () => {
   document.getElementById('btn-delete-resident').style.display = 'none';
   document.getElementById('modal-resident-title').textContent = 'הוסף דייר';
   document.getElementById('edit-resident-id').value = '';
-  document.getElementById('r-apt').value = '';
-  document.getElementById('r-floor').value = '';
+  // מספר דירה הבא — המספר הגבוה ביותר הקיים + 1 (לא allResidents.length,
+  // כדי שרצף עם "חורים" לדוגמה 1,2,4 יציע 5 ולא ידרוס דירה קיימת)
+  const maxApt = allResidents.reduce((max, r) => Math.max(max, parseInt(r.apt) || 0), 0);
+  const newApt = maxApt + 1;
+  document.getElementById('r-apt').value = newApt;
+  // 4 דירות לקומה, קומה 0 ריקה מדירות (קומה 1 = דירות 1-4, קומה 2 = דירות 5-8 וכו')
+  document.getElementById('r-floor').value = Math.ceil(newApt / 4);
   document.getElementById('r-name').value = '';
   document.getElementById('r-phone').value = '';
   document.getElementById('r-email').value = '';
   document.getElementById('r-role').value = 'tenant';
   document.getElementById('r-payment-method').value = 'transfer';
-  document.getElementById('r-fee').value = '';
+  document.getElementById('r-fee').value = aptFee(newApt);
   updateRoleNote('');
   openModal('modal-resident');
 };
@@ -2823,6 +2872,14 @@ window.saveResident = async () => {
   const name = document.getElementById('r-name').value.trim();
   if (!apt || !name) { showToast('חובה למלא דירה ושם'); return; }
 
+  // בדיקת ייחודיות מספר דירה — מונעת רישום כפול של אותה דירה
+  const aptNum = parseInt(apt);
+  const duplicateApt = allResidents.find(r => r.apt === aptNum && r.id !== id);
+  if (duplicateApt) {
+    showToast(`⚠️ דירה ${aptNum} כבר קיימת במערכת (${duplicateApt.name}) — לא ניתן לרשום אותה פעמיים`);
+    return;
+  }
+
   const feeInput = parseFloat(document.getElementById('r-fee').value);
   const defaultFee = buildingData?.monthlyFee || 200;
   const email = document.getElementById('r-email').value.trim();
@@ -2830,8 +2887,8 @@ window.saveResident = async () => {
 
   if (role === 'admin') {
     const otherAdminsCount = allResidents.filter(r => r.role === 'admin' && r.id !== id).length;
-    if (otherAdminsCount >= 1) {
-      showToast('⚠️ לא ניתן להגדיר יותר מדייר אחד נוסף כועד/מנהל בבניין אחד');
+    if (otherAdminsCount >= maxCoAdminsSetting) {
+      showToast(`⚠️ לא ניתן להגדיר יותר מ-${maxCoAdminsSetting} חברי ועד נוספים בבניין אחד`);
       return;
     }
   }
@@ -2950,7 +3007,7 @@ function renderPayments(ym) {
             <div class="payment-item-name">דירה ${myApt}</div>
             <div class="payment-item-sub">${payment.paidAt ? new Date(payment.paidAt.toDate()).toLocaleDateString('he-IL') : ''}</div>
           </div>
-          <div class="payment-item-amount" style="color:var(--green)">${fmtCurrency(payment.amount || fee)}</div>
+          <div class="payment-item-amount" style="color:var(--green)">${fmtCurrency(payment.amount || fee)} ${PAYMENT_METHOD_ICONS[payment.method]||''}</div>
         </div>`;
     }
 
@@ -3026,9 +3083,9 @@ function renderPayments(ym) {
         <div class="payment-item-name">${r.name}</div>
         <div class="payment-item-sub">דירה ${r.apt} • ${p.paidAt ? new Date(p.paidAt.toDate()).toLocaleDateString('he-IL') : ''}</div>
       </div>
-      <div class="payment-item-amount" style="color:var(--green)">${fmtCurrency(p.amount || aptFee(r.apt, r))}</div>
+      <div class="payment-item-amount" style="color:var(--green)">${fmtCurrency(p.amount || aptFee(r.apt, r))} ${PAYMENT_METHOD_ICONS[p.method]||''}</div>
       <button class="btn-icon" style="margin-right:6px;padding:6px 10px;font-size:12px;" onclick="event.stopPropagation();generateReceipt(${r.apt},'${r.name}',${aptFee(r.apt, r)},'${ym}','${p.id}')">🧾</button>
-      <button class="btn-danger" style="margin-right:8px;" onclick="event.stopPropagation();cancelPayment('${p.id}')">ביטול</button>
+      <button class="btn-danger" style="margin-right:8px;" onclick="event.stopPropagation();cancelPayment('${p.id}')">חזור</button>
     </div>
   `).join('');
 
@@ -3047,9 +3104,9 @@ function renderPayments(ym) {
               <td>${r.name}</td>
               <td>${r.floor !== undefined ? r.floor : '-'}</td>
               <td>${fmtCurrency(aptFee(r.apt, r))}</td>
-              <td>${paid ? '<span class="badge badge-green">שולם</span>' : '<span class="badge badge-orange">ממתין</span>'}</td>
+              <td>${paid ? '<span class="badge badge-green">שולם '+(PAYMENT_METHOD_ICONS[p.method]||'')+'</span>' : '<span class="badge badge-orange">ממתין</span>'}</td>
               <td>${paid
-                ? `<button class="btn-danger" style="padding:4px 8px;font-size:11px;" onclick="cancelPayment('${p.id}')">ביטול</button>`
+                ? `<button class="btn-danger" style="padding:4px 8px;font-size:11px;" onclick="cancelPayment('${p.id}')">חזור</button>`
                 : `<button class="btn-success" style="padding:4px 8px;font-size:11px;" onclick="markPaid('${r.apt}','${r.name}',${aptFee(r.apt, r)})">סמן כשולם</button>`
               }</td>
             </tr>
@@ -3191,15 +3248,15 @@ window.closeAdminFinance = () => {
 
 window.transferOwnershipToMe = async () => {
   if (!isAdmin) { showToast('אין הרשאה'); return; }
-  if (auth.currentUser?.email === buildingData?.adminEmail) { showToast('אתה כבר המנהל הראשי של הבניין'); return; }
+  if (auth.currentUser?.email === buildingData?.adminEmail) { showToast('אתה כבר ראש הועד של הבניין'); return; }
 
   const previousAdminEmail = buildingData?.adminEmail || '';
   const previousAdminName = buildingData?.adminName || previousAdminEmail;
   const newAdminName = currentUser.name || auth.currentUser.email;
 
   const ok = await customConfirm(
-    `להעביר את הבעלות על הבניין אליך?\n\n` +
-    `המנהל הרשום כרגע (${previousAdminName}) יאבד גישה לבניין לצמיתות, ואתה תהיה המנהל הראשי החדש.\n\n` +
+    `להעביר את ראשות הועד אליך?\n\n` +
+    `ראש הועד הרשום כרגע (${previousAdminName}) יאבד גישה לבניין לצמיתות, ואתה תהיה ראש הועד החדש.\n\n` +
     `לא ניתן לבטל פעולה זו בקלות. להמשיך?`
   );
   if (!ok) return;
@@ -3224,7 +3281,7 @@ window.transferOwnershipToMe = async () => {
     buildingData.adminUid = auth.currentUser.uid;
     buildingData.adminName = newAdminName;
 
-    showToast('👑 הבעלות על הבניין הועברה אליך בהצלחה');
+    showToast('👑 ראשות הועד הועברה אליך בהצלחה');
     logAnalyticsEvent('ownership_transferred');
   } catch(e) { showToast('שגיאה: ' + e.message); }
 };
@@ -3272,7 +3329,7 @@ window.openAddPayment = (isExceptional) => {
   document.getElementById('p-month').innerHTML = monthOptionsHtml.join('');
   document.getElementById('p-month-to').innerHTML = monthOptionsHtml.join('');
 
-  document.getElementById('p-amount').value = '';
+  document.getElementById('p-amount').value = isExceptional ? '' : aptFee(parseInt(sel.value), allResidents.find(r => r.apt === parseInt(sel.value)));
   document.getElementById('p-note').value = '';
   document.getElementById('p-amount-note').textContent = '';
 
@@ -3301,10 +3358,13 @@ window.openAddPayment = (isExceptional) => {
   // מלא אופן תשלום לפי הגדרת הדייר הראשון
   const firstResident = allResidents.find(r => r.apt === parseInt(sel.value));
   document.getElementById('p-method').value = firstResident?.paymentMethod || 'transfer';
-  // עדכן אופן תשלום כשמשנים דייר
+  // עדכן אופן תשלום וסכום ברירת מחדל כשמשנים דייר
   sel.onchange = () => {
     const r = allResidents.find(x => x.apt === parseInt(sel.value));
     document.getElementById('p-method').value = r?.paymentMethod || 'transfer';
+    if (!isExceptional) {
+      document.getElementById('p-amount').value = aptFee(r?.apt, r);
+    }
   };
   openModal('modal-payment');
 };
@@ -3946,7 +4006,7 @@ window.openLog = async () => {
       return '<div class="card" style="margin-bottom:8px;padding:12px;font-size:13px;border:1px solid #d33;">'
         + '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
         + '<div>'
-        + '<div style="font-weight:700;">👑 העברת בעלות על הבניין</div>'
+        + '<div style="font-weight:700;">👑 העברת ראשות הועד</div>'
         + '<div style="color:var(--gray-400);font-size:12px;margin-top:2px;">'+(p.previousAdminName||p.previousAdminEmail||'-')+' ← '+(p.newAdminName||p.newAdminEmail||'-')+'</div>'
         + byLine
         + '</div>'
@@ -4214,9 +4274,15 @@ async function createPDFReport() {
 // ===== RESIDENT PAYMENT HISTORY =====
 // current resident in history modal
 let _histApt, _histName, _histFee;
+let _histMultiMode = false;      // האם המשתמש במצב "בחירת חודשים לקבלה מרוכזת"
+let _histSelected = new Set();   // אוסף ה-ym (למשל "2026-03") שנבחרו לקבלה מרוכזת
+let _histPaidMonthsCache = {};   // עותק אחרון של paidMonths, לשימוש ב-generateMultiReceiptSelected
+let _histUnpaidMonths = [];      // ym-ים של חודשים שעברו/נוכחיים ולא שולמו — לכפתור תזכורת וואטסאפ
 
 window.showResidentHistory = async (apt, name, fee) => {
   _histApt = apt; _histName = name; _histFee = fee;
+  _histMultiMode = false;
+  _histSelected = new Set();
   document.getElementById('modal-history-title').textContent = name + ' - דירה ' + apt;
   document.getElementById('modal-history-content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
   openModal('modal-resident-history');
@@ -4232,6 +4298,8 @@ async function renderHistoryGrid(apt, name, fee) {
     const p = d.data();
     if (p.month && p.month.startsWith(String(year))) paidMonths[p.month] = { id: d.id, ...p };
   });
+  _histPaidMonthsCache = paidMonths;
+  const unpaidMonthsList = []; // ym-ים של חודשים שעברו/נוכחיים ולא שולמו — לכפתור תזכורת וואטסאפ
   const now = new Date();
   let grid = '<div id="hist-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
   for (let m = 0; m < 12; m++) {
@@ -4239,20 +4307,25 @@ async function renderHistoryGrid(apt, name, fee) {
     const isFuture = (m > now.getMonth());
     const paid = paidMonths[ym];
     if (paid) {
-      grid += '<div class="hist-cell" data-ym="'+ym+'" data-pid="'+paid.id+'" style="background:var(--green-light);border-radius:10px;padding:10px 6px;text-align:center;cursor:'+( isAdmin?'pointer':'default')+'">'
+      const isSelected = _histMultiMode && _histSelected.has(ym);
+      const style = 'background:var(--green-light);border-radius:10px;padding:10px 6px;text-align:center;cursor:'+(isAdmin?'pointer':'default')+';'
+        + (isSelected ? 'box-shadow:0 0 0 2.5px var(--blue);' : '');
+      grid += '<div class="hist-cell" data-ym="'+ym+'" data-pid="'+paid.id+'" style="'+style+'">'
         + '<div style="font-size:12px;font-weight:700;color:var(--green);">'+monthNames[m]+'</div>'
-        + '<div style="font-size:18px;margin:4px 0;">✅</div>'
-        + '<div style="font-size:11px;color:var(--green);">₪'+(paid.amount||fee)+'</div>'
-        + '<button onclick="event.stopPropagation();generateReceipt('+apt+',\''+name+'\','+fee+',\''+ym+'\',\''+paid.id+'\')" style="margin-top:6px;width:100%;background:#1A56DB;color:white;border:none;border-radius:6px;padding:4px 0;font-size:10px;font-weight:700;cursor:pointer;">🧾 קבלה</button>'
+        + '<div style="font-size:18px;margin:4px 0;">'+(isSelected ? '☑️' : '✅')+'</div>'
+        + '<div style="font-size:11px;color:var(--green);">₪'+(paid.amount||fee)+' '+(PAYMENT_METHOD_ICONS[paid.method]||'')+'</div>'
+        + (_histMultiMode ? '' : '<button onclick="event.stopPropagation();generateReceipt('+apt+',\''+name+'\','+fee+',\''+ym+'\',\''+paid.id+'\')" style="margin-top:6px;width:100%;background:#1A56DB;color:white;border:none;border-radius:6px;padding:4px 0;font-size:10px;font-weight:700;cursor:pointer;">🧾 קבלה</button>')
         + '</div>';
     } else if (isFuture) {
-      grid += '<div style="background:var(--gray-100);border-radius:10px;padding:10px 6px;text-align:center;">'
-        + '<div style="font-size:12px;font-weight:700;color:var(--gray-400);">'+monthNames[m]+'</div>'
+      // חודש עתידי — לחיץ למנהל כדי לאפשר תשלום מראש (דייר שרוצה לשלם שנה קדימה)
+      grid += '<div class="hist-cell" data-ym="'+ym+'" data-pid="" style="background:var(--blue-light);border-radius:10px;padding:10px 6px;text-align:center;cursor:'+(isAdmin && !_histMultiMode?'pointer':'default')+';opacity:'+(_histMultiMode?'0.5':'1')+';">'
+        + '<div style="font-size:12px;font-weight:700;color:var(--blue);">'+monthNames[m]+'</div>'
         + '<div style="font-size:18px;margin:4px 0;">○</div>'
-        + '<div style="font-size:11px;color:var(--gray-400);">-</div>'
+        + '<div style="font-size:11px;color:var(--blue);">₪'+fee+'</div>'
         + '</div>';
     } else {
-      grid += '<div class="hist-cell" data-ym="'+ym+'" data-pid="" style="background:var(--red-light);border-radius:10px;padding:10px 6px;text-align:center;cursor:'+( isAdmin?'pointer':'default')+'">'
+      unpaidMonthsList.push(ym);
+      grid += '<div class="hist-cell" data-ym="'+ym+'" data-pid="" style="background:var(--red-light);border-radius:10px;padding:10px 6px;text-align:center;cursor:'+(isAdmin && !_histMultiMode?'pointer':'default')+';opacity:'+(_histMultiMode?'0.5':'1')+';">'
         + '<div style="font-size:12px;font-weight:700;color:var(--red);">'+monthNames[m]+'</div>'
         + '<div style="font-size:18px;margin:4px 0;">❌</div>'
         + '<div style="font-size:11px;color:var(--red);">₪'+fee+'</div>'
@@ -4260,14 +4333,32 @@ async function renderHistoryGrid(apt, name, fee) {
     }
   }
   grid += '</div>';
+  _histUnpaidMonths = unpaidMonthsList;
   const paidCount = Object.keys(paidMonths).length;
   const totalPaid = Object.values(paidMonths).reduce((s,p) => s + (p.amount||fee), 0);
-  const summary = '<div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:14px;">'
+  const selectedTotal = [..._histSelected].reduce((s,ym) => s + (paidMonths[ym]?.amount || fee), 0);
+
+  const toggleBtn = (isAdmin && paidCount > 0)
+    ? '<button onclick="toggleHistMultiMode()" style="background:none;border:1.5px solid var(--blue);color:var(--blue);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">'
+      + (_histMultiMode ? '✖ בטל בחירה' : '🧾 קבלה לכמה חודשים') + '</button>'
+    : '';
+  const waBtn = (isAdmin && !_histMultiMode && unpaidMonthsList.length > 0)
+    ? '<button onclick="sendWhatsAppReminder()" style="background:#25D366;border:none;color:white;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">💬 תזכורת בוואטסאפ</button>'
+    : '';
+
+  const summary = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:14px;">'
     + '<span style="color:var(--green);font-weight:600;">שולם: ₪'+totalPaid+'</span>'
     + '<span style="color:var(--gray-600);">'+paidCount+'/12 חודשים</span>'
     + '</div>'
-    + (isAdmin ? '<div style="font-size:12px;color:var(--gray-400);margin-bottom:12px;text-align:center;">לחץ על חודש לסימון/ביטול תשלום</div>' : '');
-  document.getElementById('modal-history-content').innerHTML = summary + grid;
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">'+waBtn+toggleBtn+'</div>'
+    + (isAdmin && !_histMultiMode ? '<div style="font-size:12px;color:var(--gray-400);margin-bottom:12px;text-align:center;">לחץ על חודש לסימון/ביטול תשלום</div>' : '')
+    + (_histMultiMode ? '<div style="font-size:12px;color:var(--blue);margin-bottom:12px;text-align:center;">בחר/י חודשים ששולמו (ירוק) להפקת קבלה אחת מרוכזת</div>' : '');
+
+  const actionBar = _histMultiMode
+    ? '<button id="btn-multi-receipt" onclick="generateMultiReceiptSelected()" style="width:100%;margin-top:14px;padding:13px;background:'+(_histSelected.size ? 'var(--blue)' : 'var(--gray-200)')+';color:'+(_histSelected.size ? 'white' : 'var(--gray-400)')+';border:none;border-radius:12px;font-family:\'Heebo\',sans-serif;font-size:15px;font-weight:700;cursor:'+(_histSelected.size?'pointer':'default')+';" '+(_histSelected.size?'':'disabled')+'>🧾 הפק קבלה מרוכזת ('+_histSelected.size+' חודשים, ₪'+selectedTotal.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})+')</button>'
+    : '';
+
+  document.getElementById('modal-history-content').innerHTML = summary + grid + actionBar;
   // Event delegation - attach after render
   if (isAdmin) {
     document.getElementById('hist-grid').addEventListener('click', async (e) => {
@@ -4275,6 +4366,14 @@ async function renderHistoryGrid(apt, name, fee) {
       if (!cell) return;
       const ym = cell.dataset.ym;
       const pid = cell.dataset.pid;
+
+      if (_histMultiMode) {
+        if (!pid) return; // ניתן לבחור רק חודשים ששולמו בפועל
+        if (_histSelected.has(ym)) _histSelected.delete(ym); else _histSelected.add(ym);
+        await renderHistoryGrid(_histApt, _histName, _histFee);
+        return;
+      }
+
       if (pid) {
         const ok = await customConfirm('לבטל תשלום ' + ym + '?');
         if (!ok) return;
@@ -4310,6 +4409,173 @@ async function renderHistoryGrid(apt, name, fee) {
       await renderHistoryGrid(_histApt, _histName, _histFee);
       loadPayments();
     });
+  }
+}
+
+window.toggleHistMultiMode = () => {
+  _histMultiMode = !_histMultiMode;
+  if (!_histMultiMode) _histSelected = new Set();
+  renderHistoryGrid(_histApt, _histName, _histFee);
+};
+
+window.generateMultiReceiptSelected = async () => {
+  if (!_histSelected.size) return;
+  const monthsData = [..._histSelected].sort().map(ym => {
+    const p = _histPaidMonthsCache[ym];
+    return { ym, amount: p?.amount || _histFee, paymentId: p?.id || '' };
+  });
+  await generateMultiReceipt(_histApt, _histName, monthsData);
+};
+
+window.sendWhatsAppReminder = () => {
+  const resident = allResidents.find(r => r.apt === parseInt(_histApt));
+  const phone = resident?.phone;
+  if (!phone) { showToast('⚠️ לא נמצא מספר טלפון לדייר הזה'); return; }
+  if (!_histUnpaidMonths.length) { showToast('הדייר שילם את כל החודשים עד כה 🎉'); return; }
+
+  const monthsList = _histUnpaidMonths.map(ym => monthLabel(ym)).join(', ');
+  const msg = `היי, לא שילמת ועד בית עבור החודשים: ${monthsList}. תודה, ועד הבית`;
+
+  const digits = phone.replace(/\D/g,'');
+  const intlPhone = digits.startsWith('0') ? '972' + digits.slice(1) : digits;
+
+  const url = `https://wa.me/${intlPhone}?text=${encodeURIComponent(msg)}`;
+  window.open(url, '_blank');
+  logAnalyticsEvent('whatsapp_reminder_sent', { months: _histUnpaidMonths.length });
+};
+
+async function generateMultiReceipt(apt, name, monthsData) {
+  if (receiptGenerationInProgress) {
+    showToast('קבלה קודמת עדיין בהכנה, רגע בבקשה...');
+    return;
+  }
+  receiptGenerationInProgress = true;
+
+  const pausedListener = !!unsubPayments;
+  if (pausedListener) { unsubPayments(); unsubPayments = null; currentPaymentsYm = null; }
+
+  try {
+    showToast('מכין קבלה מרוכזת...');
+    await ensureCanvasPdfLibs();
+
+    const monthNames = HEBREW_MONTHS;
+    const buildingAddress = buildingData?.address || '';
+    const adminName = buildingData?.adminName || '';
+    const today = new Date().toLocaleDateString('he-IL');
+    const totalAmount = monthsData.reduce((s,m) => s + (m.amount||0), 0);
+    const firstYm = monthsData[0].ym, lastYm = monthsData[monthsData.length-1].ym;
+    // מציגים טווח "מ-עד" רק אם החודשים שנבחרו רצופים בפועל — אחרת מפרטים כל
+    // חודש בנפרד, כדי לא לרמז בטעות שגם חודשים שלא נבחרו (ולא שולמו בקבלה זו) נכללים
+    function areMonthsContiguous(yms) {
+      const sorted = [...yms].sort();
+      for (let i = 1; i < sorted.length; i++) {
+        const [py, pm] = sorted[i-1].split('-').map(Number);
+        const [cy, cm] = sorted[i].split('-').map(Number);
+        const expNextY = pm === 12 ? py + 1 : py;
+        const expNextM = pm === 12 ? 1 : pm + 1;
+        if (cy !== expNextY || cm !== expNextM) return false;
+      }
+      return true;
+    }
+    const isContiguous = areMonthsContiguous(monthsData.map(m => m.ym));
+    const rangeLabel = isContiguous
+      ? (firstYm === lastYm ? monthLabel(firstYm) : monthLabel(firstYm) + ' – ' + monthLabel(lastYm))
+      : monthsData.map(m => monthLabel(m.ym)).join(', ');
+    const receiptNum = firstYm.replace('-','') + String(apt).padStart(2,'0') + 'M';
+
+    const rowsHtml = monthsData.map(m => {
+      const [yy, mm] = m.ym.split('-');
+      return '<tr>'
+        + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">'+monthNames[parseInt(mm)-1]+' '+yy+'</td>'
+        + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:left;font-weight:700;">₪'+Number(m.amount).toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})+'</td>'
+        + '</tr>';
+    }).join('');
+
+    const html = `
+    <style>
+      .receipt-page * { box-sizing: border-box; margin: 0; padding: 0; }
+      .receipt-page { font-family: Arial, Helvetica, sans-serif; direction: rtl; color: #1a1a2e; background: white; }
+      .receipt-page.multi-page { width: 160mm; padding: 10mm 12mm 14mm; }
+      .receipt-page .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1A56DB; padding-bottom: 8px; margin-bottom: 10px; }
+      .receipt-page .logo-area { display: flex; align-items: center; gap: 10px; }
+      .receipt-page .logo-icon { width: 44px; height: 44px; background: #1A56DB; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+      .receipt-page .logo-text { font-size: 20px; font-weight: 900; color: #1A56DB; letter-spacing: -0.5px; }
+      .receipt-page .logo-sub { font-size: 10px; color: #6b7280; margin-top: 1px; }
+      .receipt-page .receipt-label { text-align: left; }
+      .receipt-page .receipt-word { font-size: 20px; font-weight: 900; color: #1A56DB; letter-spacing: 1px; }
+      .receipt-page .receipt-num { font-size: 11px; color: #6b7280; margin-top: 2px; }
+      .receipt-page .body-grid { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 14px; }
+      .receipt-page .field { flex: 1 1 45%; display: flex; flex-direction: column; gap: 1px; }
+      .receipt-page .field-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: #9ca3af; font-weight: 600; }
+      .receipt-page .field-value { font-size: 13px; font-weight: 700; color: #111827; }
+      .receipt-page .months-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 12px; }
+      .receipt-page .months-table th { background: #EBF2FF; color: #1A56DB; padding: 6px 8px; text-align: right; font-size: 10px; }
+      .receipt-page .amount-box { background: #EBF2FF; border-radius: 10px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+      .receipt-page .amount-label { font-size: 11px; color: #1A56DB; font-weight: 700; }
+      .receipt-page .amount-value { font-size: 24px; font-weight: 900; color: #1A56DB; }
+      .receipt-page .footer { border-top: 1px solid #e5e7eb; padding-top: 8px; display: flex; justify-content: space-between; align-items: center; }
+      .receipt-page .footer-text { font-size: 9px; color: #9ca3af; }
+      .receipt-page .stamp { border: 2px solid #0E9F6E; border-radius: 8px; padding: 4px 10px; color: #0E9F6E; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+    </style>
+    <div class="receipt-page multi-page">
+      <div class="header">
+        <div class="logo-area">
+          <div class="logo-icon">🏢</div>
+          <div><div class="logo-text">ועד בית פלוס</div><div class="logo-sub">${buildingAddress}</div></div>
+        </div>
+        <div class="receipt-label">
+          <div class="receipt-word">קבלה מרוכזת</div>
+          <div class="receipt-num">מס׳ ${receiptNum}</div>
+          <div class="receipt-num">תאריך הפקה: ${today}</div>
+        </div>
+      </div>
+      <div class="body-grid">
+        <div class="field"><div class="field-label">שם הדייר</div><div class="field-value">${name}</div></div>
+        <div class="field"><div class="field-label">דירה</div><div class="field-value">${apt}</div></div>
+        <div class="field"><div class="field-label">טווח חודשים</div><div class="field-value">${rangeLabel}</div></div>
+        <div class="field"><div class="field-label">מספר חודשים</div><div class="field-value">${monthsData.length}</div></div>
+        <div class="field"><div class="field-label">ראש הועד</div><div class="field-value">${adminName}</div></div>
+      </div>
+      <table class="months-table">
+        <thead><tr><th>חודש</th><th style="text-align:left;">סכום</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div class="amount-box">
+        <div class="amount-label">סה"כ ששולם — דמי ועד בית</div>
+        <div class="amount-value">₪${totalAmount.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</div>
+      </div>
+      <div class="footer">
+        <div class="footer-text">מסמך זה מהווה אסמכתא לתשלום דמי ועד בית עבור ${monthsData.length} חודשים</div>
+        <div class="stamp">✓ שולם</div>
+      </div>
+    </div>`;
+
+    const el = document.createElement('div');
+    el.style.width = '160mm';
+    el.innerHTML = html;
+
+    const pdfContainer = document.getElementById('pdf-container');
+    pdfContainer.innerHTML = '';
+    pdfContainer.appendChild(el);
+
+    const canvas = await captureReceiptCanvas(el);
+    pdfContainer.innerHTML = '';
+    if (!canvas) throw new Error('לא הצלחנו להפיק את הקבלה כרגע — נסה/י שוב בעוד רגע');
+
+    const { jsPDF } = window.jspdf;
+    const contentWidthMM = 160;
+    const contentHeightMM = canvas.height / canvas.width * contentWidthMM;
+    const pdf = new jsPDF({ unit: 'mm', format: [contentWidthMM, contentHeightMM] });
+    const imgData = canvas.toDataURL('image/jpeg', 0.98);
+    pdf.addImage(imgData, 'JPEG', 0, 0, contentWidthMM, contentHeightMM);
+    pdf.save(`קבלה_מרוכזת_דירה${apt}_${firstYm}.pdf`);
+
+    showToast('🧾 קבלה מרוכזת הורדה בהצלחה');
+    logAnalyticsEvent('receipt_generated', { multi: true, months: monthsData.length });
+  } catch(e) { showToast('שגיאה: ' + e.message); }
+  finally {
+    receiptGenerationInProgress = false;
+    if (pausedListener) loadPayments();
   }
 }
 
@@ -4457,7 +4723,7 @@ window.generateReceipt = async (apt, name, fee, ym, paymentId) => {
         <div class="field"><div class="field-label">עבור חודש</div><div class="field-value">${monthLabel}</div></div>
         <div class="field"><div class="field-label">תאריך תשלום</div><div class="field-value">${paidDate}</div></div>
         <div class="field"><div class="field-label">אמצעי תשלום</div><div class="field-value">${methodLabel}</div></div>
-        <div class="field"><div class="field-label">מנהל הועד</div><div class="field-value">${adminName}</div></div>
+        <div class="field"><div class="field-label">ראש הועד</div><div class="field-value">${adminName}</div></div>
       </div>
       <div class="amount-box">
         <div class="amount-label">סכום ששולם — דמי ועד בית</div>
@@ -4777,10 +5043,14 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
   });
 });
 
-// r-apt auto-fill fee
+// r-apt auto-fill fee + floor (floor calc only in "add" mode, not when editing an existing resident)
 document.getElementById('r-apt').addEventListener('input', function() {
   const fee = aptFee(this.value);
   document.getElementById('r-fee').value = fee;
+  const isEditing = document.getElementById('edit-resident-id').value;
+  if (!isEditing && this.value) {
+    document.getElementById('r-floor').value = Math.ceil(parseInt(this.value) / 4);
+  }
 });
 
 // Initial: activate home screen
