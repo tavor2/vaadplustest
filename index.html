@@ -2880,9 +2880,28 @@ window.saveResident = async () => {
     return;
   }
 
+  const phone = document.getElementById('r-phone').value.trim();
+  const emailRaw = document.getElementById('r-email').value.trim();
+
+  // שני השדות אופציונליים — בודקים פורמט רק אם הוזן ערך בפועל
+  if (phone) {
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (phoneDigits.length !== 10) {
+      showToast('⚠️ מספר טלפון חייב להכיל בדיוק 10 ספרות (לדוגמה: 050-1234567)');
+      return;
+    }
+  }
+  if (emailRaw) {
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(emailRaw)) {
+      showToast('⚠️ כתובת אימייל לא תקינה');
+      return;
+    }
+  }
+
   const feeInput = parseFloat(document.getElementById('r-fee').value);
   const defaultFee = buildingData?.monthlyFee || 200;
-  const email = document.getElementById('r-email').value.trim();
+  const email = emailRaw;
   const role = document.getElementById('r-role').value;
 
   if (role === 'admin') {
@@ -2897,7 +2916,7 @@ window.saveResident = async () => {
     apt: parseInt(apt),
     floor: parseInt(document.getElementById('r-floor').value) || 0,
     name, email, role,
-    phone: document.getElementById('r-phone').value.trim(),
+    phone,
     paymentMethod: document.getElementById('r-payment-method').value,
     updatedAt: serverTimestamp()
   };
