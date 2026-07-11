@@ -3104,6 +3104,7 @@ function renderPayments(ym) {
       </div>
       <div class="payment-item-amount" style="color:var(--green)">${fmtCurrency(p.amount || aptFee(r.apt, r))} ${PAYMENT_METHOD_ICONS[p.method]||''}</div>
       <button class="btn-icon" style="margin-right:6px;padding:6px 10px;font-size:12px;" onclick="event.stopPropagation();generateReceipt(${r.apt},'${r.name}',${aptFee(r.apt, r)},'${ym}','${p.id}')">🧾</button>
+      <button class="btn-icon" style="margin-right:4px;padding:6px 10px;font-size:12px;background:#25D366;color:white;" onclick="event.stopPropagation();generateReceipt(${r.apt},'${r.name}',${aptFee(r.apt, r)},'${ym}','${p.id}',true)">📤</button>
       <button class="btn-danger" style="margin-right:8px;" onclick="event.stopPropagation();cancelPayment('${p.id}')">חזור</button>
     </div>
   `).join('');
@@ -4333,7 +4334,7 @@ async function renderHistoryGrid(apt, name, fee) {
         + '<div style="font-size:12px;font-weight:700;color:var(--green);">'+monthNames[m]+'</div>'
         + '<div style="font-size:18px;margin:4px 0;">'+(isSelected ? '☑️' : '✅')+'</div>'
         + '<div style="font-size:11px;color:var(--green);">₪'+(paid.amount||fee)+' '+(PAYMENT_METHOD_ICONS[paid.method]||'')+'</div>'
-        + (_histMultiMode ? '' : '<button onclick="event.stopPropagation();generateReceipt('+apt+',\''+name+'\','+fee+',\''+ym+'\',\''+paid.id+'\')" style="margin-top:6px;width:100%;background:#1A56DB;color:white;border:none;border-radius:6px;padding:4px 0;font-size:10px;font-weight:700;cursor:pointer;">🧾 קבלה</button>')
+        + (_histMultiMode ? '' : '<div style="display:flex;gap:4px;margin-top:6px;"><button onclick="event.stopPropagation();generateReceipt('+apt+',\''+name+'\','+fee+',\''+ym+'\',\''+paid.id+'\')" style="flex:1;background:#1A56DB;color:white;border:none;border-radius:6px;padding:4px 0;font-size:10px;font-weight:700;cursor:pointer;">🧾 קבלה</button><button onclick="event.stopPropagation();generateReceipt('+apt+',\''+name+'\','+fee+',\''+ym+'\',\''+paid.id+'\',true)" style="background:#25D366;color:white;border:none;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700;cursor:pointer;">📤</button></div>')
         + '</div>';
     } else if (isFuture) {
       // חודש עתידי — לחיץ למנהל כדי לאפשר תשלום מראש (דייר שרוצה לשלם שנה קדימה)
@@ -4374,7 +4375,10 @@ async function renderHistoryGrid(apt, name, fee) {
     + (_histMultiMode ? '<div style="font-size:12px;color:var(--blue);margin-bottom:12px;text-align:center;">בחר/י חודשים ששולמו (ירוק) להפקת קבלה אחת מרוכזת</div>' : '');
 
   const actionBar = _histMultiMode
-    ? '<button id="btn-multi-receipt" onclick="generateMultiReceiptSelected()" style="width:100%;margin-top:14px;padding:13px;background:'+(_histSelected.size ? 'var(--blue)' : 'var(--gray-200)')+';color:'+(_histSelected.size ? 'white' : 'var(--gray-400)')+';border:none;border-radius:12px;font-family:\'Heebo\',sans-serif;font-size:15px;font-weight:700;cursor:'+(_histSelected.size?'pointer':'default')+';" '+(_histSelected.size?'':'disabled')+'>🧾 הפק קבלה מרוכזת ('+_histSelected.size+' חודשים, ₪'+selectedTotal.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})+')</button>'
+    ? '<div style="display:flex;gap:8px;margin-top:14px;">'
+      + '<button id="btn-multi-receipt" onclick="generateMultiReceiptSelected()" style="flex:2;padding:13px;background:'+(_histSelected.size ? 'var(--blue)' : 'var(--gray-200)')+';color:'+(_histSelected.size ? 'white' : 'var(--gray-400)')+';border:none;border-radius:12px;font-family:\'Heebo\',sans-serif;font-size:14px;font-weight:700;cursor:'+(_histSelected.size?'pointer':'default')+';" '+(_histSelected.size?'':'disabled')+'>🧾 הפק קבלה ('+_histSelected.size+', ₪'+selectedTotal.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})+')</button>'
+      + '<button id="btn-multi-receipt-share" onclick="generateMultiReceiptSelected(true)" style="flex:1;padding:13px;background:'+(_histSelected.size ? '#25D366' : 'var(--gray-200)')+';color:'+(_histSelected.size ? 'white' : 'var(--gray-400)')+';border:none;border-radius:12px;font-family:\'Heebo\',sans-serif;font-size:14px;font-weight:700;cursor:'+(_histSelected.size?'pointer':'default')+';" '+(_histSelected.size?'':'disabled')+'>📤 שתף</button>'
+      + '</div>'
     : '';
 
   document.getElementById('modal-history-content').innerHTML = summary + grid + actionBar;
@@ -4437,13 +4441,13 @@ window.toggleHistMultiMode = () => {
   renderHistoryGrid(_histApt, _histName, _histFee);
 };
 
-window.generateMultiReceiptSelected = async () => {
+window.generateMultiReceiptSelected = async (share = false) => {
   if (!_histSelected.size) return;
   const monthsData = [..._histSelected].sort().map(ym => {
     const p = _histPaidMonthsCache[ym];
     return { ym, amount: p?.amount || _histFee, paymentId: p?.id || '' };
   });
-  await generateMultiReceipt(_histApt, _histName, monthsData);
+  await generateMultiReceipt(_histApt, _histName, monthsData, share);
 };
 
 window.sendWhatsAppReminder = () => {
@@ -4463,7 +4467,7 @@ window.sendWhatsAppReminder = () => {
   logAnalyticsEvent('whatsapp_reminder_sent', { months: _histUnpaidMonths.length });
 };
 
-async function generateMultiReceipt(apt, name, monthsData) {
+async function generateMultiReceipt(apt, name, monthsData, share = false) {
   if (receiptGenerationInProgress) {
     showToast('קבלה קודמת עדיין בהכנה, רגע בבקשה...');
     return;
@@ -4587,10 +4591,17 @@ async function generateMultiReceipt(apt, name, monthsData) {
     const pdf = new jsPDF({ unit: 'mm', format: [contentWidthMM, contentHeightMM] });
     const imgData = canvas.toDataURL('image/jpeg', 0.98);
     pdf.addImage(imgData, 'JPEG', 0, 0, contentWidthMM, contentHeightMM);
-    pdf.save(`קבלה_מרוכזת_דירה${apt}_${firstYm}.pdf`);
+    const filename = `קבלה_מרוכזת_דירה${apt}_${firstYm}.pdf`;
 
-    showToast('🧾 קבלה מרוכזת הורדה בהצלחה');
-    logAnalyticsEvent('receipt_generated', { multi: true, months: monthsData.length });
+    if (share) {
+      const shared = await sharePdfOrSave(pdf, filename, 'קבלת תשלום ועד בית', `קבלה מרוכזת עבור ${name}, דירה ${apt} — ${rangeLabel}`);
+      if (shared) showToast('📤 הקבלה נשלחה לשיתוף');
+    } else {
+      pdf.save(filename);
+      showToast('🧾 קבלה מרוכזת הורדה בהצלחה');
+    }
+
+    logAnalyticsEvent('receipt_generated', { multi: true, months: monthsData.length, shared: share });
   } catch(e) { showToast('שגיאה: ' + e.message); }
   finally {
     receiptGenerationInProgress = false;
@@ -4602,6 +4613,29 @@ async function generateMultiReceipt(apt, name, monthsData) {
 
 // ===== RECEIPT GENERATION =====
 let receiptGenerationInProgress = false; // guards the shared #pdf-container from being clobbered by an overlapping call
+
+// Web Share API (חינמי, מובנה בדפדפן — לא שירות חיצוני) — פותח את תפריט
+// השיתוף הרגיל של המכשיר עם קובץ ה-PDF כבר מצורף, כדי שהמשתמש יבחר
+// WhatsApp (או כל אפליקציה אחרת) וישלח ישירות. לא נתמך בכל דפדפן/הקשר
+// (בעיקר דסקטופ) — במקרה כזה נופלים בחזרה להורדה רגילה, בדיוק כמו היום.
+async function sharePdfOrSave(pdf, filename, shareTitle, shareText) {
+  try {
+    const blob = pdf.output('blob');
+    const file = new File([blob], filename, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: shareTitle, text: shareText });
+        return true; // שותף בהצלחה
+      } catch (e) {
+        if (e.name === 'AbortError') return false; // המשתמש ביטל את השיתוף בעצמו — לא נכשל, לא נופל להורדה
+        // כל שגיאה אחרת (לא נתמך בפועל למרות canShare) — ממשיכים לפולבאק למטה
+      }
+    }
+  } catch (e) { /* ממשיכים לפולבאק למטה */ }
+  pdf.save(filename);
+  showToast('📥 השיתוף לא נתמך בדפדפן הזה — הקבלה הורדה במקום');
+  return false;
+}
 
 // Loads html2canvas + jsPDF as standalone libraries (rather than relying on
 // html2pdf.js's bundled/internal copies, whose global exposure varies by
@@ -4652,7 +4686,7 @@ async function captureReceiptCanvas(el, maxAttempts = 4) {
   return null; // every attempt came back blank
 }
 
-window.generateReceipt = async (apt, name, fee, ym, paymentId) => {
+window.generateReceipt = async (apt, name, fee, ym, paymentId, share = false) => {
   if (receiptGenerationInProgress) {
     showToast('קבלה קודמת עדיין בהכנה, רגע בבקשה...');
     return;
@@ -4778,10 +4812,17 @@ window.generateReceipt = async (apt, name, fee, ym, paymentId) => {
     const pdfHeight = pdf.internal.pageSize.getHeight();
     const imgData = canvas.toDataURL('image/jpeg', 0.98);
     pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`קבלה_דירה${apt}_${monthLabel}.pdf`);
+    const filename = `קבלה_דירה${apt}_${monthLabel}.pdf`;
 
-    showToast('🧾 קבלה הורדה בהצלחה');
-    logAnalyticsEvent('receipt_generated');
+    if (share) {
+      const shared = await sharePdfOrSave(pdf, filename, 'קבלת תשלום ועד בית', `קבלה עבור ${name}, דירה ${apt} — ${monthLabel}`);
+      if (shared) showToast('📤 הקבלה נשלחה לשיתוף');
+    } else {
+      pdf.save(filename);
+      showToast('🧾 קבלה הורדה בהצלחה');
+    }
+
+    logAnalyticsEvent('receipt_generated', { shared: share });
   } catch(e) { showToast('שגיאה: ' + e.message); }
   finally {
     receiptGenerationInProgress = false;
