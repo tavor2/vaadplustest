@@ -1511,7 +1511,7 @@ const EXPENSE_CATEGORY_ICONS = { חשמל:'⚡', מים:'💧', ניקיון:'�
 
 // Shared across renderHistoryGrid(), renderPayments() (pay-paid-list ותצוגת דייר) ו-po-table —
 // אותם אייקונים בדיוק כמו ב-dropdown של p-method/r-payment-method
-const PAYMENT_METHOD_ICONS = { transfer: '💳', standingOrder: '🔁', cash: '💲', check: '🧾' };
+const PAYMENT_METHOD_ICONS = { transfer: '💳', standingOrder: '🔁', cash: '💵', check: '🧾' };
 
 function monthLabel(ym) {
   // ym = "2026-06"
@@ -3104,7 +3104,7 @@ function renderPayments(ym) {
       </div>
       <div class="payment-item-amount" style="color:var(--green)">${fmtCurrency(p.amount || aptFee(r.apt, r))} ${PAYMENT_METHOD_ICONS[p.method]||''}</div>
       <button class="btn-icon" style="margin-right:6px;padding:6px 10px;font-size:12px;" onclick="event.stopPropagation();generateReceipt(${r.apt},'${r.name}',${aptFee(r.apt, r)},'${ym}','${p.id}')">🧾</button>
-      <button class="btn-icon" style="margin-right:4px;padding:6px 10px;font-size:12px;background:#25D366;color:white;" onclick="event.stopPropagation();generateReceipt(${r.apt},'${r.name}',${aptFee(r.apt, r)},'${ym}','${p.id}',true)">📤</button>
+      <button class="btn-icon" style="margin-right:4px;padding:6px 10px;font-size:12px;background:#25D366;color:white;" onclick="event.stopPropagation();generateReceipt(${r.apt},'${r.name}',${aptFee(r.apt, r)},'${ym}','${p.id}',true)">💬</button>
       <button class="btn-danger" style="margin-right:8px;" onclick="event.stopPropagation();cancelPayment('${p.id}')">חזור</button>
     </div>
   `).join('');
@@ -4334,7 +4334,7 @@ async function renderHistoryGrid(apt, name, fee) {
         + '<div style="font-size:12px;font-weight:700;color:var(--green);">'+monthNames[m]+'</div>'
         + '<div style="font-size:18px;margin:4px 0;">'+(isSelected ? '☑️' : '✅')+'</div>'
         + '<div style="font-size:11px;color:var(--green);">₪'+(paid.amount||fee)+' '+(PAYMENT_METHOD_ICONS[paid.method]||'')+'</div>'
-        + (_histMultiMode ? '' : '<div style="display:flex;gap:4px;margin-top:6px;"><button onclick="event.stopPropagation();generateReceipt('+apt+',\''+name+'\','+fee+',\''+ym+'\',\''+paid.id+'\')" style="flex:1;background:#1A56DB;color:white;border:none;border-radius:6px;padding:4px 0;font-size:10px;font-weight:700;cursor:pointer;">🧾 קבלה</button><button onclick="event.stopPropagation();generateReceipt('+apt+',\''+name+'\','+fee+',\''+ym+'\',\''+paid.id+'\',true)" style="background:#25D366;color:white;border:none;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700;cursor:pointer;">📤</button></div>')
+        + (_histMultiMode ? '' : '<div style="display:flex;gap:4px;margin-top:6px;"><button onclick="event.stopPropagation();generateReceipt('+apt+',\''+name+'\','+fee+',\''+ym+'\',\''+paid.id+'\')" style="flex:1;background:#1A56DB;color:white;border:none;border-radius:6px;padding:4px 0;font-size:10px;font-weight:700;cursor:pointer;">🧾 קבלה</button><button onclick="event.stopPropagation();generateReceipt('+apt+',\''+name+'\','+fee+',\''+ym+'\',\''+paid.id+'\',true)" style="background:#25D366;color:white;border:none;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700;cursor:pointer;">💬</button></div>')
         + '</div>';
     } else if (isFuture) {
       // חודש עתידי — לחיץ למנהל כדי לאפשר תשלום מראש (דייר שרוצה לשלם שנה קדימה)
@@ -4377,7 +4377,7 @@ async function renderHistoryGrid(apt, name, fee) {
   const actionBar = _histMultiMode
     ? '<div style="display:flex;gap:8px;margin-top:14px;">'
       + '<button id="btn-multi-receipt" onclick="generateMultiReceiptSelected()" style="flex:2;padding:13px;background:'+(_histSelected.size ? 'var(--blue)' : 'var(--gray-200)')+';color:'+(_histSelected.size ? 'white' : 'var(--gray-400)')+';border:none;border-radius:12px;font-family:\'Heebo\',sans-serif;font-size:14px;font-weight:700;cursor:'+(_histSelected.size?'pointer':'default')+';" '+(_histSelected.size?'':'disabled')+'>🧾 הפק קבלה ('+_histSelected.size+', ₪'+selectedTotal.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})+')</button>'
-      + '<button id="btn-multi-receipt-share" onclick="generateMultiReceiptSelected(true)" style="flex:1;padding:13px;background:'+(_histSelected.size ? '#25D366' : 'var(--gray-200)')+';color:'+(_histSelected.size ? 'white' : 'var(--gray-400)')+';border:none;border-radius:12px;font-family:\'Heebo\',sans-serif;font-size:14px;font-weight:700;cursor:'+(_histSelected.size?'pointer':'default')+';" '+(_histSelected.size?'':'disabled')+'>📤 שתף</button>'
+      + '<button id="btn-multi-receipt-share" onclick="generateMultiReceiptSelected(true)" style="flex:1;padding:13px;background:'+(_histSelected.size ? '#25D366' : 'var(--gray-200)')+';color:'+(_histSelected.size ? 'white' : 'var(--gray-400)')+';border:none;border-radius:12px;font-family:\'Heebo\',sans-serif;font-size:14px;font-weight:700;cursor:'+(_histSelected.size?'pointer':'default')+';" '+(_histSelected.size?'':'disabled')+'>💬 שתף</button>'
       + '</div>'
     : '';
 
@@ -4595,7 +4595,7 @@ async function generateMultiReceipt(apt, name, monthsData, share = false) {
 
     if (share) {
       const shared = await sharePdfOrSave(pdf, filename, 'קבלת תשלום ועד בית', `קבלה מרוכזת עבור ${name}, דירה ${apt} — ${rangeLabel}`);
-      if (shared) showToast('📤 הקבלה נשלחה לשיתוף');
+      if (shared) showToast('💬 הקבלה נשלחה לשיתוף');
     } else {
       pdf.save(filename);
       showToast('🧾 קבלה מרוכזת הורדה בהצלחה');
@@ -4816,7 +4816,7 @@ window.generateReceipt = async (apt, name, fee, ym, paymentId, share = false) =>
 
     if (share) {
       const shared = await sharePdfOrSave(pdf, filename, 'קבלת תשלום ועד בית', `קבלה עבור ${name}, דירה ${apt} — ${monthLabel}`);
-      if (shared) showToast('📤 הקבלה נשלחה לשיתוף');
+      if (shared) showToast('💬 הקבלה נשלחה לשיתוף');
     } else {
       pdf.save(filename);
       showToast('🧾 קבלה הורדה בהצלחה');
