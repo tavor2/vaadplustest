@@ -112,23 +112,6 @@
     /* ===== APP SHELL ===== */
     #app { display: none; flex-direction: column; min-height: 100vh; }
 
-    /* ===== HEADER ===== */
-    .app-header {
-      background: var(--blue);
-      padding: 20px 20px 28px;
-      color: white;
-    }
-    .header-top {
-      display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;
-    }
-    .header-greeting { font-size: 13px; opacity: 0.8; }
-    .header-name { font-size: 22px; font-weight: 700; }
-    .header-avatar {
-      width: 42px; height: 42px; border-radius: 50%;
-      background: rgba(255,255,255,0.2);
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 18px; cursor: pointer;
-    }
     .btn-logout {
       background: rgba(255,255,255,0.15); border: none; border-radius: 10px;
       color: white; padding: 8px 14px; font-family: 'Heebo', sans-serif;
@@ -187,7 +170,6 @@
     .home-header-area { background: var(--blue); padding: 20px 20px 70px; color: white; }
     .home-greeting { font-size: 14px; opacity: 0.8; }
     .home-name { font-size: 24px; font-weight: 800; margin-bottom: 0; }
-    .home-top-row { display: flex; justify-content: space-between; align-items: flex-start; }
 
     .quick-grid {
       display: grid; grid-template-columns: repeat(4,1fr);
@@ -374,7 +356,6 @@
     }
 
     /* ===== PAYMENTS TABLE (overview) ===== */
-    .payments-overview { padding: 16px; }
     .po-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .po-table th { background: var(--blue); color: white; padding: 9px 8px; text-align: right; font-weight: 600; }
     .po-table td { padding: 9px 8px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
@@ -416,7 +397,6 @@
   <div id="auth-error"></div>
 </div>
 
-<!-- SETUP (first-time admin) -->
 <!-- SUPER ADMIN SCREEN -->
 <div id="super-admin-screen" style="display:none;min-height:100vh;background:var(--blue);flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;">
   <div style="font-size:48px;margin-bottom:16px;">👑</div>
@@ -776,7 +756,7 @@
           </table>
         </div>
       </div>
-      <div id="residents-cards-view" style="display:none" id="residents-cards"></div>
+      <div id="residents-cards-view" style="display:none"></div>
     </div>
   </div>
 
@@ -1511,17 +1491,12 @@ const EXPENSE_CATEGORY_ICONS = { חשמל:'⚡', מים:'💧', ניקיון:'�
 
 // Shared across renderHistoryGrid(), renderPayments() (pay-paid-list ותצוגת דייר) ו-po-table —
 // אותם אייקונים בדיוק כמו ב-dropdown של p-method/r-payment-method
-const PAYMENT_METHOD_ICONS = { transfer: '💳', standingOrder: '🔁', cash: '💵', check: '🧾' };
+const PAYMENT_METHOD_ICONS = { transfer: '💳', standingOrder: '🔁', cash: '💰', check: '🧾' };
 
 function monthLabel(ym) {
   // ym = "2026-06"
   const [y, m] = ym.split('-');
   return HEBREW_MONTHS[parseInt(m)-1] + ' ' + y;
-}
-
-function currentYM() {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
 }
 
 function enumerateMonths(fromYm, toYm) {
@@ -1797,7 +1772,6 @@ window.confirmDeleteBuilding = async () => {
 // ===== SUPER ADMIN =====
 const APP_VERSION = '2.5.0'; // עדכון קישור סרטון ההדרכה ביוטיוב
 const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
-const MY_BUILDING_ADDRESS = 'זרחין 10, רעננה ';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
 const MAX_CO_ADMINS_DEFAULT = 1; // Default fallback if meta/settings.maxCoAdmins doesn't exist yet — matches the original hardcoded "1 additional committee member" limit.
@@ -2445,12 +2419,6 @@ window.completeSetup = async () => {
     showToast('שגיאה: ' + e.message);
   }
 };
-
-function showError(msg) {
-  const el = document.getElementById('auth-error');
-  el.textContent = msg;
-  el.style.display = 'block';
-}
 
 // ===== INIT UI =====
 function initUI() {
@@ -4518,7 +4486,7 @@ async function generateMultiReceipt(apt, name, monthsData, share = false) {
     <style>
       .receipt-page * { box-sizing: border-box; margin: 0; padding: 0; }
       .receipt-page { font-family: Arial, Helvetica, sans-serif; direction: rtl; color: #1a1a2e; background: white; }
-      .receipt-page.multi-page { width: 160mm; padding: 10mm 12mm 14mm; }
+      .receipt-page.multi-page { width: 160mm; padding: 10mm 12mm 14mm; box-sizing: border-box; }
       .receipt-page .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1A56DB; padding-bottom: 8px; margin-bottom: 10px; }
       .receipt-page .logo-area { display: flex; align-items: center; gap: 10px; }
       .receipt-page .logo-icon { width: 44px; height: 44px; background: #1A56DB; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
@@ -4735,7 +4703,7 @@ window.generateReceipt = async (apt, name, fee, ym, paymentId, share = false) =>
     <style>
       .receipt-page * { box-sizing: border-box; margin: 0; padding: 0; }
       .receipt-page { font-family: Arial, Helvetica, sans-serif; direction: rtl; color: #1a1a2e; background: white; }
-      .receipt-page.page { width: 148mm; min-height: 105mm; padding: 10mm 12mm; position: relative; }
+      .receipt-page.page { width: 148mm; min-height: 105mm; padding: 10mm 12mm; position: relative; box-sizing: border-box; }
       .receipt-page .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1A56DB; padding-bottom: 8px; margin-bottom: 10px; }
       .receipt-page .logo-area { display: flex; align-items: center; gap: 10px; }
       .receipt-page .logo-icon { width: 44px; height: 44px; background: #1A56DB; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
