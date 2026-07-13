@@ -16,18 +16,10 @@
  *   Google Play via Pub/Sub (renewals, cancellations, expirations) and
  *   keeps premiumUntil in sync automatically without the user opening the
  *   app. Optional but recommended — see the setup guide.
- *
- * notifyNewIssue / notifyIssueClosed:
- *   Firestore-triggered functions that push FCM notifications to a
- *   building's committee members (adminFcmTokens on the building doc) when
- *   a maintenance issue is opened or marked closed. Tokens belong only to
- *   the admin + coAdmins — regular residents never register a token, so
- *   there's no per-resident token management here.
  */
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onMessagePublished } = require('firebase-functions/v2/pubsub');
-const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const { google } = require('googleapis');
@@ -220,57 +212,4 @@ exports.playRTDN = onMessagePublished('play-rtdn', async (event) => {
   } catch (e) {
     console.error('RTDN handling failed', e);
   }
-});
-
-// ===== PUSH NOTIFICATIONS (FCM) =====
-// Shared by both issue triggers below. Sends to every token on
-// buildings/{buildingId}.adminFcmTokens (committee members only — regular
-// residents never register a token) and prunes any token FCM reports as
-// dead (uninstalled app / revoked permission), so the array doesn't
-// accumulate stale tokens that would slow down every future send.
-async function sendPushToBuilding(buildingId, notification) {
-  const bSnap = await admin.firestore().doc(`buildings/${buildingId}`).get();
-  if (!bSnap.exists) return;
-  const tokens = bSnap.data().adminFcmTokens || [];
-  if (!tokens.length) return;
-
-  try {
-    const response = await admin.messaging().sendEachForMulticast({ notification, tokens });
-    const invalidTokens = [];
-    response.responses.forEach((r, i) => {
-      if (!r.success && (r.error?.code === 'messaging/registration-token-not-registered' ||
-                          r.error?.code === 'messaging/invalid-registration-token')) {
-        invalidTokens.push(tokens[i]);
-      }
-    });
-    if (invalidTokens.length) {
-      const cleanTokens = tokens.filter(t => !invalidTokens.includes(t));
-      await admin.firestore().doc(`buildings/${buildingId}`).update({ adminFcmTokens: cleanTokens });
-    }
-  } catch (e) {
-    console.error('Push notification failed', e);
-  }
-}
-
-// Notifies committee members when a new maintenance issue is opened
-// (by anyone — admin or a regular resident).
-exports.notifyNewIssue = onDocumentCreated('buildings/{buildingId}/issues/{issueId}', async (event) => {
-  const issue = event.data.data();
-  await sendPushToBuilding(event.params.buildingId, {
-    title: `🔧 תקלה חדשה: ${issue.title || ''}`,
-    body: `${issue.location || ''} • דחיפות: ${issue.priority || 'בינוני'}`
-  });
-});
-
-// Notifies committee members when an issue transitions into "סגור" —
-// guarded so it only fires on the actual transition, not on every edit
-// made to an issue that was already closed.
-exports.notifyIssueClosed = onDocumentUpdated('buildings/{buildingId}/issues/{issueId}', async (event) => {
-  const before = event.data.before.data();
-  const after = event.data.after.data();
-  if (before.status === after.status || after.status !== 'סגור') return;
-  await sendPushToBuilding(event.params.buildingId, {
-    title: `✅ תקלה נסגרה: ${after.title || ''}`,
-    body: after.location || 'התקלה סומנה כטופלה'
-  });
 });
