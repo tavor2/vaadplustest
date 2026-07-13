@@ -3385,14 +3385,12 @@ async function renderPaymentReminders() {
     _remindersDebtorsMap = {};
 
     allResidents.forEach(r => {
-      const joined = r.createdAt?.toDate ? r.createdAt.toDate() : null;
       const missing = [];
       let streak = 0;
       // Start from last month (not the current, still-in-progress month) —
       // counting the current month would unfairly flag someone on day 1.
       let cursor = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       while (streak < 36) {
-        if (joined && cursor < new Date(joined.getFullYear(), joined.getMonth(), 1)) break; // don't count months before the resident existed
         const ym = cursor.getFullYear() + '-' + String(cursor.getMonth()+1).padStart(2,'0');
         if (paidSet.has(r.apt + '_' + ym)) break; // streak broken — this month was paid
         missing.push(ym);
