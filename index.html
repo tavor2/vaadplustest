@@ -1535,6 +1535,28 @@ function monthsRangeLabel(yms) {
   return fy === ly ? `${firstName} עד ${lastName} ${fy}` : `${firstName} ${fy} עד ${lastName} ${ly}`;
 }
 
+// Like monthsRangeLabel, but safe for lists that may have gaps (e.g.
+// _histUnpaidMonths, where a resident could have paid some months in
+// between unpaid ones). Splits into consecutive runs first, formats each
+// run as a range via monthsRangeLabel, and joins the runs with commas —
+// so gaps are never silently implied as unpaid.
+function formatMonthRanges(yms) {
+  const sorted = [...yms].sort();
+  if (!sorted.length) return '';
+  const groups = [];
+  let current = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    const [py, pm] = current[current.length-1].split('-').map(Number);
+    const [cy, cm] = sorted[i].split('-').map(Number);
+    const expNextY = pm === 12 ? py + 1 : py;
+    const expNextM = pm === 12 ? 1 : pm + 1;
+    if (cy === expNextY && cm === expNextM) current.push(sorted[i]);
+    else { groups.push(current); current = [sorted[i]]; }
+  }
+  groups.push(current);
+  return groups.map(g => monthsRangeLabel(g)).join(', ');
+}
+
 function enumerateMonths(fromYm, toYm) {
   const [fy, fm] = fromYm.split('-').map(Number);
   const [ty, tm] = toYm.split('-').map(Number);
@@ -3450,7 +3472,7 @@ window.sendBulkPaymentReminder = async (apt) => {
   if (!resident?.phone) { showToast('⚠️ לא נמצא מספר טלפון לדייר הזה'); return; }
   if (!data || !data.missing.length) return;
 
-  const rangeLabel = monthsRangeLabel(data.missing);
+  const rangeLabel = formatMonthRanges(data.missing);
   const msg = `היי, לא שילמת ועד בית עבור החודשים ${rangeLabel}. תודה, ועד הבית`;
   const digits = resident.phone.replace(/\D/g,'');
   const intlPhone = digits.startsWith('0') ? '972' + digits.slice(1) : digits;
@@ -4620,8 +4642,8 @@ window.sendWhatsAppReminder = () => {
   if (!phone) { showToast('⚠️ לא נמצא מספר טלפון לדייר הזה'); return; }
   if (!_histUnpaidMonths.length) { showToast('הדייר שילם את כל החודשים עד כה 🎉'); return; }
 
-  const monthsList = _histUnpaidMonths.map(ym => monthLabel(ym)).join(', ');
-  const msg = `היי, לא שילמת ועד בית עבור החודשים: ${monthsList}. תודה, ועד הבית`;
+  const monthsList = formatMonthRanges(_histUnpaidMonths);
+  const msg = `היי, לא שילמת ועד בית עבור החודשים ${monthsList}. תודה, ועד הבית`;
 
   const digits = phone.replace(/\D/g,'');
   const intlPhone = digits.startsWith('0') ? '972' + digits.slice(1) : digits;
