@@ -1118,6 +1118,7 @@
       <button class="btn-primary" onclick="closeAdminFinance();openAddExpense();">➕ הוסף הוצאה</button>
       <button class="btn-primary" onclick="closeAdminFinance();openCashDeposit()">🏦 הפקד מזומן לבנק</button>
       <button class="btn-primary" onclick="closeAdminFinance();openLog();">📋 יומן פעולות</button>
+      <button class="btn-primary" onclick="closeAdminFinance();openPaymentReminders();">🔔 תזכורות תשלום</button>
       <button class="btn-primary" onclick="closeAdminFinance();generatePDF();">📄 הפק PDF שנתי</button>
       <button class="btn-primary" onclick="closeAdminFinance();exportExcel();">📊 ייצוא לאקסל שנתי</button>
       <hr style="border:none;border-top:1px solid #eee;margin:4px 0;"/>
@@ -1128,6 +1129,16 @@
           <button class="btn-success" onclick="saveMonthlyFee()">שמור</button>
         </div>
         <div id="monthly-fee-note" style="font-size:12px;color:var(--gray-500);margin-top:4px;"></div>
+      </div>
+      <hr style="border:none;border-top:1px solid #eee;margin:4px 0;"/>
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">🔔 סף חודשים לתזכורת תשלום</label>
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;">דייר ייכנס לרשימת "תזכורות תשלום" רק לאחר שלא שילם באופן רציף לפחות כך הרבה חודשים (לא כולל החודש הנוכחי, שטרם הסתיים).</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input class="form-input" id="input-reminder-threshold" type="number" min="1" placeholder="3" style="flex:1;"/>
+          <button class="btn-success" onclick="saveReminderThreshold()">שמור</button>
+        </div>
+        <div id="reminder-threshold-note" style="font-size:12px;color:var(--gray-500);margin-top:4px;"></div>
       </div>
       <hr style="border:none;border-top:1px solid #eee;margin:4px 0;"/>
       <div class="form-group" style="margin:0;">
@@ -1183,6 +1194,15 @@
   <div class="modal">
     <div class="modal-title">יומן פעולות</div>
     <div id="log-content"></div>
+  </div>
+</div>
+
+<!-- Payment Reminders Modal -->
+<div class="modal-overlay" id="modal-payment-reminders">
+  <div class="modal">
+    <div class="modal-title">🔔 תזכורות תשלום</div>
+    <div id="reminders-content"></div>
+    <button class="btn-secondary" style="width:100%;margin-top:12px;" onclick="closeModal('modal-payment-reminders')">סגור</button>
   </div>
 </div>
 
@@ -1775,6 +1795,7 @@ const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
 const MAX_CO_ADMINS_DEFAULT = 1; // Default fallback if meta/settings.maxCoAdmins doesn't exist yet — matches the original hardcoded "1 additional committee member" limit.
+const REMINDER_THRESHOLD_DEFAULT = 3; // Default fallback if buildingData.reminderThresholdMonths doesn't exist yet (per-building setting, not global — each vaad sets its own via saveReminderThreshold()).
 let trialDaysSetting = TRIAL_DAYS; // Effective trial length in days, loaded from meta/settings.trialDays on app load (see loadSessionSettings()).
 let maxCoAdminsSetting = MAX_CO_ADMINS_DEFAULT; // Effective max number of additional committee members (beyond the primary admin) allowed per building, loaded from meta/settings.maxCoAdmins.
 
@@ -3208,6 +3229,9 @@ window.openAdminFinance = () => {
   const fee = buildingData?.monthlyFee || '';
   document.getElementById('input-monthly-fee').value = fee;
   document.getElementById('monthly-fee-note').textContent = fee ? `נוכחי: ${fmtCurrency(fee)} לחודש` : 'לא הוגדר עדיין';
+  const reminderThreshold = buildingData?.reminderThresholdMonths ?? REMINDER_THRESHOLD_DEFAULT;
+  document.getElementById('input-reminder-threshold').value = reminderThreshold;
+  document.getElementById('reminder-threshold-note').textContent = `נוכחי: ${reminderThreshold} חודשים`;
   document.getElementById('input-opening-balance').value = buildingData?.openingBalance || '';
   document.getElementById('input-opening-balance-date').value = buildingData?.openingBalanceDate || '';
   document.getElementById('input-cash-opening-balance').value = buildingData?.cashOpeningBalance || '';
@@ -3296,6 +3320,139 @@ window.saveMonthlyFee = async () => {
   } catch(e) {
     showToast('שגיאה: ' + e.message);
   }
+};
+
+window.saveReminderThreshold = async () => {
+  if (!isAdmin) { showToast('אין הרשאה'); return; }
+
+  const val = parseInt(document.getElementById('input-reminder-threshold').value);
+  if (!val || val < 1) { showToast('הכנס מספר חודשים תקין'); return; }
+  try {
+    const previousVal = buildingData?.reminderThresholdMonths ?? REMINDER_THRESHOLD_DEFAULT;
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'buildings', buildingId), { reminderThresholdMonths: val });
+    const logRef = doc(collection(db, 'buildings', buildingId, 'paymentLog'));
+    batch.set(logRef, {
+      type: 'reminderThreshold', action: 'reminder_threshold_adjusted', amount: val, previousAmount: previousVal,
+      at: serverTimestamp(), by: currentUser.uid, byName: currentUser.name || currentUser.email
+    });
+    await batch.commit();
+    buildingData.reminderThresholdMonths = val;
+    document.getElementById('reminder-threshold-note').textContent = `נשמר: ${val} חודשים`;
+    showToast('✅ סף התזכורות נשמר');
+  } catch(e) { showToast('שגיאה: ' + e.message); }
+};
+
+// ===== PAYMENT REMINDERS =====
+// Maps apt -> { missing: [ym...], streak } for the debtors currently shown
+// in the reminders modal — populated by renderPaymentReminders() and read
+// by sendBulkPaymentReminder() so we don't need to recompute per click.
+let _remindersDebtorsMap = {};
+
+function currentYmString() {
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+}
+
+window.openPaymentReminders = async () => {
+  const container = document.getElementById('reminders-content');
+  container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  openModal('modal-payment-reminders');
+  await renderPaymentReminders();
+};
+
+async function renderPaymentReminders() {
+  const container = document.getElementById('reminders-content');
+  const threshold = buildingData?.reminderThresholdMonths ?? REMINDER_THRESHOLD_DEFAULT;
+
+  try {
+    // All-time payments — needed since a debtor could be many months behind.
+    const paySnap = await getDocs(collection(db, 'buildings', buildingId, 'payments'));
+    const paidSet = new Set(paySnap.docs.map(d => { const p = d.data(); return p.apt + '_' + p.month; }));
+
+    // Reminders already sent this calendar month, per apt — so the button
+    // shows ✅ instead of inviting the admin to spam the same tenant twice.
+    const nowYm = currentYmString();
+    const logSnap = await getDocs(query(collection(db, 'buildings', buildingId, 'paymentLog'), where('type','==','reminder')));
+    const sentThisMonth = new Set();
+    logSnap.docs.forEach(d => {
+      const l = d.data();
+      if (l.sentForMonth === nowYm) sentThisMonth.add(l.apt);
+    });
+
+    const now = new Date();
+    const debtors = [];
+    _remindersDebtorsMap = {};
+
+    allResidents.forEach(r => {
+      const joined = r.createdAt?.toDate ? r.createdAt.toDate() : null;
+      const missing = [];
+      let streak = 0;
+      // Start from last month (not the current, still-in-progress month) —
+      // counting the current month would unfairly flag someone on day 1.
+      let cursor = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      while (streak < 36) {
+        if (joined && cursor < new Date(joined.getFullYear(), joined.getMonth(), 1)) break; // don't count months before the resident existed
+        const ym = cursor.getFullYear() + '-' + String(cursor.getMonth()+1).padStart(2,'0');
+        if (paidSet.has(r.apt + '_' + ym)) break; // streak broken — this month was paid
+        missing.push(ym);
+        streak++;
+        cursor.setMonth(cursor.getMonth() - 1);
+      }
+      if (streak >= threshold) {
+        debtors.push({ resident: r, missing, streak });
+        _remindersDebtorsMap[r.apt] = { missing, streak };
+      }
+    });
+
+    debtors.sort((a,b) => b.streak - a.streak);
+
+    if (!debtors.length) {
+      container.innerHTML = `<div class="card-empty">🎉 אין דיירים שחורגים מסף ${threshold} החודשים</div>`;
+      return;
+    }
+
+    container.innerHTML = `<div style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">דיירים שלא שילמו ${threshold} חודשים ברצף ומעלה (${debtors.length})</div>`
+      + debtors.map(({resident: r, missing, streak}) => {
+        const already = sentThisMonth.has(r.apt);
+        const owedTotal = missing.reduce((s) => s + aptFee(r.apt, r), 0);
+        return '<div class="card" style="margin-bottom:8px;">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">'
+          + '<div>'
+          + '<div style="font-weight:700;">' + r.name + ' (דירה ' + r.apt + ')</div>'
+          + '<div style="font-size:12px;color:var(--red);margin-top:2px;">חייב ' + streak + ' חודשים • ' + fmtCurrency(owedTotal) + '</div>'
+          + '</div>'
+          + '<button class="btn-icon" style="background:' + (already ? 'var(--gray-100)' : '#25D366') + ';color:' + (already ? 'var(--gray-600)' : 'white') + ';white-space:nowrap;" onclick="sendBulkPaymentReminder(' + r.apt + ')">' + (already ? '✅ נשלח' : '💬 שלח') + '</button>'
+          + '</div></div>';
+      }).join('');
+  } catch(e) {
+    container.innerHTML = '<div class="card-empty">שגיאה בטעינת הרשימה: ' + e.message + '</div>';
+  }
+}
+
+window.sendBulkPaymentReminder = async (apt) => {
+  const data = _remindersDebtorsMap[apt];
+  const resident = allResidents.find(r => r.apt === parseInt(apt));
+  if (!resident?.phone) { showToast('⚠️ לא נמצא מספר טלפון לדייר הזה'); return; }
+  if (!data || !data.missing.length) return;
+
+  const monthsList = data.missing.map(ym => monthLabel(ym)).join(', ');
+  const msg = `היי, לא שילמת ועד בית עבור החודשים: ${monthsList}. תודה, ועד הבית`;
+  const digits = resident.phone.replace(/\D/g,'');
+  const intlPhone = digits.startsWith('0') ? '972' + digits.slice(1) : digits;
+  const url = `https://wa.me/${intlPhone}?text=${encodeURIComponent(msg)}`;
+  window.open(url, '_blank');
+
+  try {
+    await addDoc(collection(db, 'buildings', buildingId, 'paymentLog'), {
+      type: 'reminder', action: 'reminder_sent', apt: parseInt(apt), name: resident.name,
+      months: data.missing, sentForMonth: currentYmString(),
+      at: serverTimestamp(), by: currentUser.uid, byName: currentUser.name || currentUser.email
+    });
+    logAnalyticsEvent('bulk_payment_reminder_sent', { months: data.missing.length });
+  } catch(e) { /* לא קריטי — התזכורת עצמה כבר נפתחה בוואטסאפ */ }
+
+  await renderPaymentReminders();
 };
 
 window.openAddPayment = (isExceptional) => {
@@ -3984,6 +4141,31 @@ window.openLog = async () => {
         + '<div>'
         + '<div style="font-weight:700;">💰 שינוי דמי ועד ברירת מחדל</div>'
         + '<div style="color:var(--gray-400);font-size:12px;margin-top:2px;">₪'+(p.previousAmount||0)+' ← ₪'+(p.amount||0)+' לחודש</div>'
+        + byLine
+        + '</div>'
+        + '<div style="text-align:left;color:var(--blue);font-weight:600;white-space:nowrap;">✏️ עודכן</div>'
+        + '</div></div>';
+    }
+
+    if (type === 'reminder') {
+      const monthsList = (p.months || []).map(ym => monthLabel(ym)).join(', ');
+      return '<div class="card" style="margin-bottom:8px;padding:12px;font-size:13px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+        + '<div>'
+        + '<div style="font-weight:700;">💬 תזכורת תשלום נשלחה — '+(p.name||'')+' (דירה '+(p.apt??'-')+')</div>'
+        + '<div style="color:var(--gray-400);font-size:12px;margin-top:2px;">'+monthsList+'</div>'
+        + byLine
+        + '</div>'
+        + '<div style="text-align:left;color:#25D366;font-weight:600;white-space:nowrap;">✅ נשלח</div>'
+        + '</div></div>';
+    }
+
+    if (type === 'reminderThreshold') {
+      return '<div class="card" style="margin-bottom:8px;padding:12px;font-size:13px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+        + '<div>'
+        + '<div style="font-weight:700;">🔔 שינוי סף חודשים לתזכורת תשלום</div>'
+        + '<div style="color:var(--gray-400);font-size:12px;margin-top:2px;">'+(p.previousAmount||0)+' ← '+(p.amount||0)+' חודשים</div>'
         + byLine
         + '</div>'
         + '<div style="text-align:left;color:var(--blue);font-weight:600;white-space:nowrap;">✏️ עודכן</div>'
