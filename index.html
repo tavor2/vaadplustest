@@ -1519,6 +1519,22 @@ function monthLabel(ym) {
   return HEBREW_MONTHS[parseInt(m)-1] + ' ' + y;
 }
 
+// Formats a set of consecutive yyyy-mm months (as produced by the payment
+// reminders debt-streak calculation, which is always gap-free by
+// construction) as "מרץ עד יוני 2026" instead of a comma-separated list.
+// Not used for lists that may have gaps (e.g. _histUnpaidMonths in the
+// resident history modal), where a range would misleadingly imply paid
+// months in between are also unpaid.
+function monthsRangeLabel(yms) {
+  const sorted = [...yms].sort();
+  if (sorted.length === 1) return monthLabel(sorted[0]);
+  const [fy, fm] = sorted[0].split('-');
+  const [ly, lm] = sorted[sorted.length - 1].split('-');
+  const firstName = HEBREW_MONTHS[parseInt(fm)-1];
+  const lastName = HEBREW_MONTHS[parseInt(lm)-1];
+  return fy === ly ? `${firstName} עד ${lastName} ${fy}` : `${firstName} ${fy} עד ${lastName} ${ly}`;
+}
+
 function enumerateMonths(fromYm, toYm) {
   const [fy, fm] = fromYm.split('-').map(Number);
   const [ty, tm] = toYm.split('-').map(Number);
@@ -3434,8 +3450,8 @@ window.sendBulkPaymentReminder = async (apt) => {
   if (!resident?.phone) { showToast('⚠️ לא נמצא מספר טלפון לדייר הזה'); return; }
   if (!data || !data.missing.length) return;
 
-  const monthsList = data.missing.map(ym => monthLabel(ym)).join(', ');
-  const msg = `היי, לא שילמת ועד בית עבור החודשים: ${monthsList}. תודה, ועד הבית`;
+  const rangeLabel = monthsRangeLabel(data.missing);
+  const msg = `היי, לא שילמת ועד בית עבור החודשים ${rangeLabel}. תודה, ועד הבית`;
   const digits = resident.phone.replace(/\D/g,'');
   const intlPhone = digits.startsWith('0') ? '972' + digits.slice(1) : digits;
   const url = `https://wa.me/${intlPhone}?text=${encodeURIComponent(msg)}`;
