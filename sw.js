@@ -1,3 +1,32 @@
+// ===== FIREBASE CLOUD MESSAGING (background push) =====
+// Must be loaded via importScripts (compat build) — Service Workers can't
+// use the modular SDK the way index.html does. This runs alongside the
+// existing cache/fetch logic below without touching it.
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: "AIzaSyBUGF8SWdjPg0NSwOlapu_vYnx740fQy9s",
+  authDomain: "vaadplus-c0cc1.firebaseapp.com",
+  projectId: "vaadplus-c0cc1",
+  storageBucket: "vaadplus-c0cc1.firebasestorage.app",
+  messagingSenderId: "369349440346",
+  appId: "1:369349440346:web:4aa1d03e44f9ffa46b7963"
+});
+
+const fcmMessaging = firebase.messaging();
+// Handles messages while the app is closed/in background. Reuses the same
+// showNotification() shape as the existing generic 'push' handler below,
+// so notification styling stays consistent regardless of source.
+fcmMessaging.onBackgroundMessage((payload) => {
+  const data = payload.notification || {};
+  self.registration.showNotification(data.title || 'ועד בית פלוס', {
+    body: data.body || '',
+    icon: '/vaadplus/icon-192.png',
+    badge: '/vaadplus/icon-192.png'
+  });
+});
+
 const CACHE_NAME = 'vaad-bait-plus-v2';
 const ASSETS = [
   '/vaadplus/',
@@ -7,7 +36,7 @@ const ASSETS = [
   '/vaadplus/icon-512.png'
 ];
 
-// Install — cache all assets11
+// Install — cache all assets
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
