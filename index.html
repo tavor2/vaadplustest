@@ -4774,7 +4774,16 @@ async function generateMultiReceipt(apt, name, monthsData, share = false) {
     const { jsPDF } = window.jspdf;
     const contentWidthMM = 160;
     const contentHeightMM = canvas.height / canvas.width * contentWidthMM;
-    const pdf = new jsPDF({ unit: 'mm', format: [contentWidthMM, contentHeightMM] });
+    // jsPDF defaults to portrait orientation when none is specified, and
+    // silently swaps a custom format's width/height to enforce that
+    // whenever width > height (e.g. a short receipt with few months, which
+    // ends up wider than it is tall). Without this, the addImage() call
+    // below still draws at the original 160mm width into a now-narrower
+    // swapped page, clipping the right side of the content. Specifying
+    // orientation explicitly, consistent with our actual dimensions,
+    // prevents jsPDF from touching the array at all.
+    const orientation = contentWidthMM >= contentHeightMM ? 'l' : 'p';
+    const pdf = new jsPDF({ unit: 'mm', format: [contentWidthMM, contentHeightMM], orientation });
     const imgData = canvas.toDataURL('image/jpeg', 0.98);
     pdf.addImage(imgData, 'JPEG', 0, 0, contentWidthMM, contentHeightMM);
     const filename = `קבלה_מרוכזת_דירה${apt}_${firstYm}.pdf`;
