@@ -1470,11 +1470,12 @@ let currentResView = 'table';
 let currentPayView = 'overview';
 
 // ===== HELPERS =====
-window.showToast = (msg) => {
+window.showToast = (msg, duration = 2500) => {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => t.classList.remove('show'), duration);
 };
 
 function getGreeting() {
@@ -1828,7 +1829,7 @@ window.confirmDeleteBuilding = async () => {
 };
 
 // ===== SUPER ADMIN =====
-const APP_VERSION = '2.5.0'; // עדכון קישור סרטון ההדרכה ביוטיוב
+const APP_VERSION = '2.5.1'; // הודעה מפורשת כש-Web Share API לא זמין (דפדפן ברירת מחדל) + ולידציה נגד גרש/גרשיים בשם דייר
 const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
@@ -2898,6 +2899,13 @@ window.saveResident = async () => {
   const apt = document.getElementById('r-apt').value.trim();
   const name = document.getElementById('r-name').value.trim();
   if (!apt || !name) { showToast('חובה למלא דירה ושם'); return; }
+
+  // גרש/גרשיים בשם שוברים אינטראקציות מבוססות onclick (למשל פתיחת היסטוריית
+  // תשלומים) בכל האפליקציה — נחסם כבר בשלב השמירה כדי למנוע את הבאג מלכתחילה.
+  if (name.includes("'") || name.includes('"')) {
+    showToast('⚠️ שם הדייר לא יכול להכיל גרש (\') או גרשיים (")');
+    return;
+  }
 
   // בדיקת ייחודיות מספר דירה — מונעת רישום כפול של אותה דירה
   const aptNum = parseInt(apt);
@@ -4814,10 +4822,12 @@ let receiptGenerationInProgress = false; // guards the shared #pdf-container fro
 // WhatsApp (או כל אפליקציה אחרת) וישלח ישירות. לא נתמך בכל דפדפן/הקשר
 // (בעיקר דסקטופ) — במקרה כזה נופלים בחזרה להורדה רגילה, בדיוק כמו היום.
 async function sharePdfOrSave(pdf, filename, shareTitle, shareText) {
+  let attemptedShare = false;
   try {
     const blob = pdf.output('blob');
     const file = new File([blob], filename, { type: 'application/pdf' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      attemptedShare = true;
       try {
         await navigator.share({ files: [file], title: shareTitle, text: shareText });
         return true; // שותף בהצלחה
@@ -4828,7 +4838,15 @@ async function sharePdfOrSave(pdf, filename, shareTitle, shareText) {
     }
   } catch (e) { /* ממשיכים לפולבאק למטה */ }
   pdf.save(filename);
-  showToast('📥 השיתוף לא נתמך בדפדפן הזה — הקבלה הורדה במקום');
+  // כש-canShare מחזיר false/לא קיים מלכתחילה — הסיבה השכיחה ביותר היא שדפדפן
+  // ברירת המחדל של המכשיר אינו Chrome (למשל Samsung Internet), ששם שיתוף
+  // קבצים לא נתמך. אין דרך לשנות זאת פרוגרמטית מתוך PWA/JS — רק להנחות את
+  // המשתמש לפתרון הידני.
+  if (!attemptedShare) {
+    showToast('📥 השיתוף בוואטסאפ לא זמין — הקבלה הורדה. כדי לאפשר שיתוף ישיר, הגדר/י את Chrome כדפדפן ברירת המחדל: הגדרות ← אפליקציות ← אפליקציות ברירת מחדל ← דפדפן', 6000);
+  } else {
+    showToast('📥 השיתוף לא הצליח — הקבלה הורדה במקום');
+  }
   return false;
 }
 
