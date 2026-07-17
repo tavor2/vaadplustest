@@ -1,12 +1,8 @@
-[
-  {
-    "relation": [
-      "delegate_permission/common.handle_all_urls"
-    ],
-    "target": {
-      "namespace": "android_app",
-      "package_name": "com.vaadplus.app",
-      "sha256_cert_fingerprint": "91:33:19:C3:56:77:35:43:82:04:33:A0:C1:4A:FB:26:D4:5A:7B:1F:61:A9:1C:A9:FD:7B:39:08:5E:F8:38:70"
-    }
-  }
-]
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.vaadplus.app",
+        "sha256_cert_fingerprints": ["91:33:19:C3:56:77:35:43:82:04:33:A0:C1:4A:FB:26:D4:5A:7B:1F:61:A9:1C:A9:FD:7B:39:08:5E:F8:38:70"]
+      }
+    }]
