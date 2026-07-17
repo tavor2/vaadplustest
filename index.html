@@ -1069,7 +1069,7 @@
     <input type="hidden" id="edit-expense-id"/>
     <div class="form-group">
       <label class="form-label">קטגוריה *</label>
-      <select class="form-select" id="exp-cat">
+      <select class="form-select" id="exp-cat" onchange="toggleExpenseContractorFields()">
         <option value="חשמל">חשמל</option>
         <option value="מים">מים</option>
         <option value="ניקיון">ניקיון</option>
@@ -1082,12 +1082,22 @@
         <option value="אחר">אחר</option>
       </select>
     </div>
+    <div class="form-group" id="exp-contractor-fields" style="display:none;">
+      <label class="form-label">שם מבצע התיקון</label>
+      <input class="form-input" id="exp-contractor-name" placeholder="שם בעל המקצוע" style="margin-bottom:10px;"/>
+      <label class="form-label">טלפון מבצע התיקון</label>
+      <input class="form-input" id="exp-contractor-phone" type="tel" placeholder="050-0000000" style="margin-bottom:10px;"/>
+      <label class="form-label">הערה</label>
+      <input class="form-input" id="exp-repair-note" placeholder="לדוגמה: תשלום 1 מתוך 2"/>
+    </div>
     <div class="form-group">
       <label class="form-label">אמצעי תשלום</label>
       <select class="form-select" id="exp-method">
         <option value="bank">🏦 בנק</option>
         <option value="cash">💵 מזומן</option>
+        <option value="check">🧾 שיק</option>
       </select>
+      <div style="font-size:11px;color:var(--gray-400);margin-top:4px;">בדוחות (PDF/אקסל) שיק נספר יחד עם בנק</div>
     </div>
     <div class="form-group">
       <label class="form-label">תיאור *</label>
@@ -1829,7 +1839,7 @@ window.confirmDeleteBuilding = async () => {
 };
 
 // ===== SUPER ADMIN =====
-const APP_VERSION = '2.5.1'; // הודעה מפורשת כש-Web Share API לא זמין (דפדפן ברירת מחדל) + ולידציה נגד גרש/גרשיים בשם דייר
+const APP_VERSION = '2.5.3'; // נוסף שדה הערה חופשי לתיקונים (לדוגמה: תשלום 1 מתוך 2)
 const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
@@ -3671,11 +3681,19 @@ function renderExpenses() {
     + '</div>';
   html += allExpenses.map(e => {
     const icon = catIcons[e.category] || '📋';
+    const contractorLine = e.contractorName
+      ? '<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">🔧 '+e.contractorName+(e.contractorPhone ? ' • <a href="tel:'+e.contractorPhone+'" style="color:var(--blue);text-decoration:none;">'+e.contractorPhone+'</a>' : '')+'</div>'
+      : '';
+    const repairNoteLine = e.repairNote
+      ? '<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">📝 '+e.repairNote+'</div>'
+      : '';
     return '<div class="card" style="margin:8px 16px;">'
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'
       + '<div style="flex:1;">'
       + '<div style="font-size:15px;font-weight:700;">'+icon+' '+e.description+'</div>'
       + '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">'+e.category+' • '+(e.date||'')+'</div>'
+      + contractorLine
+      + repairNoteLine
       + '</div>'
       + '<span style="font-size:17px;font-weight:700;color:var(--red);">₪'+(e.amount||0).toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})+'</span>'
       + '</div>'
@@ -3688,6 +3706,15 @@ function renderExpenses() {
   container.innerHTML = html;
 }
 
+// Shows the contractor name/phone fields only when the "תיקון" (repair)
+// category is selected — those two fields are irrelevant for every other
+// expense category and stay hidden (and get cleared on save, see
+// saveExpense()) otherwise.
+window.toggleExpenseContractorFields = () => {
+  const isRepair = document.getElementById('exp-cat').value === 'תיקון';
+  document.getElementById('exp-contractor-fields').style.display = isRepair ? '' : 'none';
+};
+
 window.openAddExpense = () => {
   document.getElementById('modal-expense-title').textContent = 'הוצאה חדשה';
   document.getElementById('edit-expense-id').value = '';
@@ -3696,6 +3723,10 @@ window.openAddExpense = () => {
   document.getElementById('exp-desc').value = '';
   document.getElementById('exp-amount').value = '';
   document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('exp-contractor-name').value = '';
+  document.getElementById('exp-contractor-phone').value = '';
+  document.getElementById('exp-repair-note').value = '';
+  toggleExpenseContractorFields();
   openModal('modal-expense');
 };
 
@@ -3711,6 +3742,10 @@ window.editExpense = (id) => {
   document.getElementById('exp-desc').value = e.description || '';
   document.getElementById('exp-amount').value = e.amount || '';
   document.getElementById('exp-date').value = e.date || '';
+  document.getElementById('exp-contractor-name').value = e.contractorName || '';
+  document.getElementById('exp-contractor-phone').value = e.contractorPhone || '';
+  document.getElementById('exp-repair-note').value = e.repairNote || '';
+  toggleExpenseContractorFields();
   openModal('modal-expense');
 };
 
@@ -3730,6 +3765,29 @@ window.saveExpense = async () => {
     date: document.getElementById('exp-date').value,
     updatedAt: serverTimestamp()
   };
+
+  // מבצע התיקון (שם + טלפון) רלוונטי רק לקטגוריית "תיקון" — בכל קטגוריה
+  // אחרת מנקים את השדות (למשל אם ההוצאה נערכה ושונתה הקטגוריה בדיעבד).
+  if (category === 'תיקון') {
+    const contractorName = document.getElementById('exp-contractor-name').value.trim();
+    const contractorPhone = document.getElementById('exp-contractor-phone').value.trim();
+    const repairNote = document.getElementById('exp-repair-note').value.trim();
+    if (contractorPhone) {
+      const phoneDigits = contractorPhone.replace(/\D/g, '');
+      if (phoneDigits.length !== 10) {
+        showToast('⚠️ טלפון מבצע התיקון חייב להכיל בדיוק 10 ספרות (לדוגמה: 050-1234567)');
+        return;
+      }
+    }
+    data.contractorName = contractorName || null;
+    data.contractorPhone = contractorPhone || null;
+    data.repairNote = repairNote || null;
+  } else {
+    data.contractorName = null;
+    data.contractorPhone = null;
+    data.repairNote = null;
+  }
+
   try {
     const batch = writeBatch(db);
     const logRef = doc(collection(db, 'buildings', buildingId, 'paymentLog'));
