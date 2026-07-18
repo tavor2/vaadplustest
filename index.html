@@ -785,8 +785,8 @@
         <div class="stat-label">ממתין</div>
       </div>
       <div class="stat-card" style="text-align:right;">
-        <div class="stat-value green" id="pay-pct">-</div>
-        <div class="stat-label">אחוז גבייה</div>
+        <div class="stat-value red" id="pay-month-expenses">-</div>
+        <div class="stat-label">הוצאות החודש</div>
       </div>
     </div>
 
@@ -1839,7 +1839,7 @@ window.confirmDeleteBuilding = async () => {
 };
 
 // ===== SUPER ADMIN =====
-const APP_VERSION = '2.5.3'; // נוסף שדה הערה חופשי לתיקונים (לדוגמה: תשלום 1 מתוך 2)
+const APP_VERSION = '2.5.4'; // כרטיס "אחוז גבייה" הוחלף ב"הוצאות החודש" במסך ניהול כספים
 const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
@@ -2998,8 +2998,28 @@ window.saveResident = async () => {
     closeModal('modal-resident');
   } catch(e) { showToast('שגיאה: ' + e.message); }
 };
+// Total expenses recorded for the selected month (bank + cash combined) —
+// shown alongside collection stats so the admin can see collection vs.
+// spending for the same month at a glance. One-off read per month change,
+// same date-range filtering pattern used by createPDFReport()/exportExcel().
+async function loadMonthExpenses(ym) {
+  const el = document.getElementById('pay-month-expenses');
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'buildings', buildingId, 'expenses'),
+      where('date', '>=', ym + '-01'),
+      where('date', '<=', ym + '-31')
+    ));
+    const total = snap.docs.reduce((s,d) => s + (d.data().amount || 0), 0);
+    if (el) el.textContent = fmtCurrency(total);
+  } catch(e) {
+    if (el) el.textContent = '-';
+  }
+}
+
 window.loadPayments = () => {
   const ym = document.getElementById('payment-month-select').value;
+  loadMonthExpenses(ym);
 
   if (!isAdmin) {
     // Residents are read-only — a one-time read per month view is enough,
@@ -3043,7 +3063,6 @@ function renderPayments(ym) {
     document.getElementById('pay-total-expected').textContent = fmtCurrency(fee);
     document.getElementById('pay-total-paid').textContent = payment ? fmtCurrency(payment.amount || fee) : '₪0';
     document.getElementById('pay-total-pending').textContent = payment ? '₪0' : fmtCurrency(fee);
-    document.getElementById('pay-pct').textContent = payment ? '100%' : '0%';
     document.getElementById('pay-progress-bar').style.width = payment ? '100%' : '0%';
     document.getElementById('pay-progress-label').textContent = payment ? '✅ שילמת החודש' : '⏳ טרם שילמת החודש';
     document.getElementById('stat-paid').textContent = payment ? fmtCurrency(payment.amount || fee) : '₪0';
@@ -3116,7 +3135,6 @@ function renderPayments(ym) {
 
   document.getElementById('pay-total-paid').textContent = fmtCurrency(totalPaid);
   document.getElementById('pay-total-expected').textContent = fmtCurrency(totalExpected);
-  document.getElementById('pay-pct').textContent = pct + '%';
   document.getElementById('pay-total-pending').textContent = fmtCurrency(totalExpected - totalPaid);
   document.getElementById('pay-progress-bar').style.width = pct + '%';
   document.getElementById('pay-progress-label').textContent = `${paidCount} מתוך ${allResidents.length} דירות שילמו`;
