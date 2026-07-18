@@ -1111,6 +1111,18 @@
       <label class="form-label">תאריך</label>
       <input class="form-input" id="exp-date" type="date"/>
     </div>
+    <div class="form-group">
+      <label class="form-label">📷 צילום קבלה/חשבונית (אופציונלי)</label>
+      <input type="hidden" id="exp-receipt-url"/>
+      <input type="hidden" id="exp-receipt-removed" value="false"/>
+      <div id="exp-receipt-preview-wrap" style="display:none;margin-bottom:10px;position:relative;width:120px;">
+        <img id="exp-receipt-preview" style="width:120px;height:120px;object-fit:cover;border-radius:10px;border:1.5px solid var(--gray-200);"/>
+        <button type="button" onclick="removeExpenseReceiptImage()" style="position:absolute;top:-8px;left:-8px;background:var(--red);color:white;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;cursor:pointer;">✕</button>
+      </div>
+      <input type="file" accept="image/*" capture="environment" id="exp-receipt-file" style="display:none;" onchange="onExpenseReceiptFileSelected(event)"/>
+      <button type="button" class="btn-icon" style="width:100%;" onclick="document.getElementById('exp-receipt-file').click()">📎 צלם/בחר תמונה</button>
+      <div id="exp-receipt-note" style="font-size:11px;color:var(--gray-400);margin-top:4px;"></div>
+    </div>
     <button class="btn-primary" onclick="saveExpense()">שמור הוצאה</button>
     <button class="btn-secondary" onclick="closeModal('modal-expense')">ביטול</button>
   </div>
@@ -1424,6 +1436,8 @@ import { getFunctions, httpsCallable }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import { getAnalytics, logEvent, isSupported as analyticsIsSupported }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics.js";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
   
 const firebaseConfig = {
@@ -1452,6 +1466,7 @@ const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({ forceOwnership: false }) })
 });
 const functions = getFunctions(app);
+const storage = getStorage(app);
 
 // Google Analytics -- guarded with isSupported() because some WebView/TWA
 // contexts (or blocked storage / private browsing) don't support it, and
@@ -1839,7 +1854,7 @@ window.confirmDeleteBuilding = async () => {
 };
 
 // ===== SUPER ADMIN =====
-const APP_VERSION = '2.5.4'; // כרטיס "אחוז גבייה" הוחלף ב"הוצאות החודש" במסך ניהול כספים
+const APP_VERSION = '2.6.0'; // שלב 1: אפשרות לצלם/להעלות תמונת קבלה להוצאה (Firebase Storage), עם דחיסה בצד הלקוח ותצוגה ממוזערת ברשימת ההוצאות
 const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
@@ -3660,6 +3675,16 @@ let allExpenses = [];
 let unsubExpenses = null;
 let expensesListenerBuildingId = null; // which building the expenses listener is attached to
 
+// Receipt-photo upload state for the currently-open modal-expense form.
+// _expReceiptPendingFile: a newly-selected+compressed image (Blob) waiting to be
+// uploaded to Storage on save — null if the user hasn't picked a new photo.
+// _expReceiptOriginalUrl: the receiptImageUrl already saved on this expense when
+// editExpense() opened the modal (null when adding a new expense) — used so
+// saveExpense() knows which old Storage file to delete after a successful save,
+// either because it was replaced by a new photo or explicitly removed.
+let _expReceiptPendingFile = null;
+let _expReceiptOriginalUrl = null;
+
 function ensureExpensesListener() {
   if (expensesListenerBuildingId === buildingId && unsubExpenses) return; // already listening for this building
   if (unsubExpenses) unsubExpenses();
@@ -3705,15 +3730,21 @@ function renderExpenses() {
     const repairNoteLine = e.repairNote
       ? '<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">📝 '+e.repairNote+'</div>'
       : '';
+    const receiptThumb = e.receiptImageUrl
+      ? '<img src="'+e.receiptImageUrl+'" onclick="event.stopPropagation();window.open(\''+e.receiptImageUrl+'\',\'_blank\')" style="width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--gray-200);flex-shrink:0;"/>'
+      : '';
     return '<div class="card" style="margin:8px 16px;">'
-      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;">'
       + '<div style="flex:1;">'
       + '<div style="font-size:15px;font-weight:700;">'+icon+' '+e.description+'</div>'
       + '<div style="font-size:12px;color:var(--gray-400);margin-top:4px;">'+e.category+' • '+(e.date||'')+'</div>'
       + contractorLine
       + repairNoteLine
       + '</div>'
+      + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">'
+      + receiptThumb
       + '<span style="font-size:17px;font-weight:700;color:var(--red);">₪'+(e.amount||0).toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})+'</span>'
+      + '</div>'
       + '</div>'
       + (isAdmin ? '<div style="display:flex;gap:8px;border-top:1px solid var(--gray-100);padding-top:10px;">'
         + '<button class="btn-icon" style="flex:1;padding:8px;font-size:13px;" onclick="editExpense(\''+e.id+'\')">✏️ ערוך</button>'
@@ -3723,6 +3754,74 @@ function renderExpenses() {
   }).join('');
   container.innerHTML = html;
 }
+
+// Resizes+re-encodes an image file client-side before it's ever sent to
+// Storage — keeps text/numbers on the receipt crisp while keeping file size
+// small (typically 150-300KB), per the compression plan discussed with the
+// user. Always re-encodes as JPEG at maxWidth px wide (never upscales).
+async function compressImageFile(file, maxWidth = 1280, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round(height * (maxWidth / width));
+        width = maxWidth;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob); else reject(new Error('דחיסת התמונה נכשלה'));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('לא ניתן לטעון את קובץ התמונה')); };
+    img.src = objectUrl;
+  });
+}
+
+// Triggered when the admin picks/takes a photo in modal-expense. Compresses
+// it immediately (so the preview shown already reflects the actual upload
+// size) and stashes it in _expReceiptPendingFile — the real upload to
+// Storage only happens inside saveExpense(), once the rest of the form is
+// validated, so a cancelled/invalid form never orphans a file in Storage.
+window.onExpenseReceiptFileSelected = async (event) => {
+  const file = event.target.files[0];
+  event.target.value = ''; // allow re-selecting the exact same file again later
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { showToast('יש לבחור קובץ תמונה בלבד'); return; }
+
+  const note = document.getElementById('exp-receipt-note');
+  note.textContent = 'מעבד תמונה...';
+  try {
+    const compressed = await compressImageFile(file);
+    _expReceiptPendingFile = compressed;
+    document.getElementById('exp-receipt-removed').value = 'false';
+    const previewUrl = URL.createObjectURL(compressed);
+    document.getElementById('exp-receipt-preview').src = previewUrl;
+    document.getElementById('exp-receipt-preview-wrap').style.display = 'block';
+    note.textContent = 'גודל לאחר דחיסה: כ-' + Math.round(compressed.size / 1024) + 'KB';
+  } catch(e) {
+    note.textContent = '';
+    showToast('שגיאה בעיבוד התמונה: ' + e.message);
+  }
+};
+
+// Clears whatever photo is currently attached to the form (a newly-picked
+// one, or the one already saved on this expense when editing). If an
+// already-saved image is being removed, marks exp-receipt-removed so
+// saveExpense() knows to null out receiptImageUrl and delete the Storage
+// file — but only once the rest of the form is actually saved.
+window.removeExpenseReceiptImage = () => {
+  _expReceiptPendingFile = null;
+  document.getElementById('exp-receipt-preview-wrap').style.display = 'none';
+  document.getElementById('exp-receipt-preview').src = '';
+  document.getElementById('exp-receipt-note').textContent = '';
+  if (_expReceiptOriginalUrl) document.getElementById('exp-receipt-removed').value = 'true';
+};
 
 // Shows the contractor name/phone fields only when the "תיקון" (repair)
 // category is selected — those two fields are irrelevant for every other
@@ -3744,6 +3843,13 @@ window.openAddExpense = () => {
   document.getElementById('exp-contractor-name').value = '';
   document.getElementById('exp-contractor-phone').value = '';
   document.getElementById('exp-repair-note').value = '';
+  _expReceiptPendingFile = null;
+  _expReceiptOriginalUrl = null;
+  document.getElementById('exp-receipt-url').value = '';
+  document.getElementById('exp-receipt-removed').value = 'false';
+  document.getElementById('exp-receipt-preview-wrap').style.display = 'none';
+  document.getElementById('exp-receipt-preview').src = '';
+  document.getElementById('exp-receipt-note').textContent = '';
   toggleExpenseContractorFields();
   openModal('modal-expense');
 };
@@ -3763,6 +3869,18 @@ window.editExpense = (id) => {
   document.getElementById('exp-contractor-name').value = e.contractorName || '';
   document.getElementById('exp-contractor-phone').value = e.contractorPhone || '';
   document.getElementById('exp-repair-note').value = e.repairNote || '';
+  _expReceiptPendingFile = null;
+  _expReceiptOriginalUrl = e.receiptImageUrl || null;
+  document.getElementById('exp-receipt-url').value = e.receiptImageUrl || '';
+  document.getElementById('exp-receipt-removed').value = 'false';
+  document.getElementById('exp-receipt-note').textContent = '';
+  if (e.receiptImageUrl) {
+    document.getElementById('exp-receipt-preview').src = e.receiptImageUrl;
+    document.getElementById('exp-receipt-preview-wrap').style.display = 'block';
+  } else {
+    document.getElementById('exp-receipt-preview').src = '';
+    document.getElementById('exp-receipt-preview-wrap').style.display = 'none';
+  }
   toggleExpenseContractorFields();
   openModal('modal-expense');
 };
@@ -3806,6 +3924,27 @@ window.saveExpense = async () => {
     data.repairNote = null;
   }
 
+  // תמונת קבלה — מועלית ל-Storage לפני כתיבת הנתונים ל-Firestore (Storage
+  // אינו חלק מ-writeBatch). אם ההעלאה נכשלת, ממשיכים לשמור את שאר פרטי
+  // ההוצאה בכל מקרה — עדיף הוצאה בלי תמונה מאשר לאבד את כל הרישום.
+  let uploadedUrl = null;
+  const removed = document.getElementById('exp-receipt-removed').value === 'true';
+  if (_expReceiptPendingFile) {
+    try {
+      showToast('מעלה תמונת קבלה...');
+      const fileId = id || doc(collection(db, 'buildings', buildingId, 'expenses')).id;
+      const path = `buildings/${buildingId}/expenseReceipts/${fileId}_${Date.now()}.jpg`;
+      const fileRef = storageRef(storage, path);
+      await uploadBytes(fileRef, _expReceiptPendingFile, { contentType: 'image/jpeg' });
+      uploadedUrl = await getDownloadURL(fileRef);
+      data.receiptImageUrl = uploadedUrl;
+    } catch(e) {
+      showToast('⚠️ הוצאה תישמר, אך העלאת התמונה נכשלה: ' + e.message);
+    }
+  } else if (removed) {
+    data.receiptImageUrl = null;
+  }
+
   try {
     const batch = writeBatch(db);
     const logRef = doc(collection(db, 'buildings', buildingId, 'paymentLog'));
@@ -3829,6 +3968,17 @@ window.saveExpense = async () => {
       await batch.commit();
       showToast('✅ הוצאה נשמרה');
     }
+
+    // מחיקת התמונה הישנה מה-Storage — רק אחרי ששמירת הנתונים הצליחה (כדי
+    // לא לאבד קובץ אם ה-commit נכשל), ורק אם היא הוחלפה בתמונה חדשה או
+    // הוסרה בפירוש. כישלון מחיקה כאן אינו קריטי — משאיר קובץ יתום ב-Storage
+    // לכל היותר.
+    if ((uploadedUrl || removed) && _expReceiptOriginalUrl && _expReceiptOriginalUrl !== uploadedUrl) {
+      try { await deleteObject(storageRef(storage, _expReceiptOriginalUrl)); } catch(e) { /* לא קריטי */ }
+    }
+
+    _expReceiptPendingFile = null;
+    _expReceiptOriginalUrl = null;
     closeModal('modal-expense');
     loadExpenses();
     loadBalance();
@@ -3850,6 +4000,9 @@ window.deleteExpense = async (id) => {
     at: serverTimestamp(), by: currentUser.uid, byName: currentUser.name || currentUser.email
   });
   await batch.commit();
+  if (e.receiptImageUrl) {
+    try { await deleteObject(storageRef(storage, e.receiptImageUrl)); } catch(err) { /* לא קריטי */ }
+  }
   showToast('🗑 נמחק');
   loadExpenses();
   loadBalance();
