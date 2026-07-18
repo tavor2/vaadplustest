@@ -1121,7 +1121,7 @@
       </div>
       <input type="file" accept="image/*" capture="environment" id="exp-receipt-file" style="display:none;" onchange="onExpenseReceiptFileSelected(event)"/>
       <button type="button" class="btn-icon" style="width:100%;" onclick="document.getElementById('exp-receipt-file').click()">📎 צלם/בחר תמונה</button>
-      <div id="exp-receipt-note" style="font-size:11px;color:var(--gray-400);margin-top:4px;"></div>
+      <div id="exp-receipt-note" style="font-size:13px;font-weight:600;color:var(--blue);margin-top:4px;"></div>
     </div>
     <button class="btn-primary" onclick="saveExpense()">שמור הוצאה</button>
     <button class="btn-secondary" onclick="closeModal('modal-expense')">ביטול</button>
@@ -1854,7 +1854,7 @@ window.confirmDeleteBuilding = async () => {
 };
 
 // ===== SUPER ADMIN =====
-const APP_VERSION = '2.6.0'; // שלב 1: אפשרות לצלם/להעלות תמונת קבלה להוצאה (Firebase Storage), עם דחיסה בצד הלקוח ותצוגה ממוזערת ברשימת ההוצאות
+const APP_VERSION = '2.6.1'; // שיפור חיווי ויזואלי בהעלאת תמונת קבלה (מעבד/הצליח/נכשל) והארכת זמן הודעת שגיאה, לצורך אבחון כישלון העלאה
 const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
@@ -3795,7 +3795,8 @@ window.onExpenseReceiptFileSelected = async (event) => {
   if (!file.type.startsWith('image/')) { showToast('יש לבחור קובץ תמונה בלבד'); return; }
 
   const note = document.getElementById('exp-receipt-note');
-  note.textContent = 'מעבד תמונה...';
+  note.style.color = 'var(--blue)';
+  note.textContent = '⏳ מעבד תמונה, רגע בבקשה...';
   try {
     const compressed = await compressImageFile(file);
     _expReceiptPendingFile = compressed;
@@ -3803,8 +3804,10 @@ window.onExpenseReceiptFileSelected = async (event) => {
     const previewUrl = URL.createObjectURL(compressed);
     document.getElementById('exp-receipt-preview').src = previewUrl;
     document.getElementById('exp-receipt-preview-wrap').style.display = 'block';
-    note.textContent = 'גודל לאחר דחיסה: כ-' + Math.round(compressed.size / 1024) + 'KB';
+    note.style.color = 'var(--green)';
+    note.textContent = '✅ מוכן להעלאה — גודל: כ-' + Math.round(compressed.size / 1024) + 'KB';
   } catch(e) {
+    note.style.color = 'var(--red)';
     note.textContent = '';
     showToast('שגיאה בעיבוד התמונה: ' + e.message);
   }
@@ -3929,8 +3932,11 @@ window.saveExpense = async () => {
   // ההוצאה בכל מקרה — עדיף הוצאה בלי תמונה מאשר לאבד את כל הרישום.
   let uploadedUrl = null;
   const removed = document.getElementById('exp-receipt-removed').value === 'true';
+  const receiptNote = document.getElementById('exp-receipt-note');
   if (_expReceiptPendingFile) {
     try {
+      receiptNote.style.color = 'var(--blue)';
+      receiptNote.textContent = '⏳ מעלה תמונה לשרת...';
       showToast('מעלה תמונת קבלה...');
       const fileId = id || doc(collection(db, 'buildings', buildingId, 'expenses')).id;
       const path = `buildings/${buildingId}/expenseReceipts/${fileId}_${Date.now()}.jpg`;
@@ -3938,8 +3944,12 @@ window.saveExpense = async () => {
       await uploadBytes(fileRef, _expReceiptPendingFile, { contentType: 'image/jpeg' });
       uploadedUrl = await getDownloadURL(fileRef);
       data.receiptImageUrl = uploadedUrl;
+      receiptNote.style.color = 'var(--green)';
+      receiptNote.textContent = '✅ התמונה הועלתה בהצלחה';
     } catch(e) {
-      showToast('⚠️ הוצאה תישמר, אך העלאת התמונה נכשלה: ' + e.message);
+      receiptNote.style.color = 'var(--red)';
+      receiptNote.textContent = '⚠️ העלאת התמונה נכשלה: ' + e.message;
+      showToast('⚠️ הוצאה תישמר, אך העלאת התמונה נכשלה: ' + e.message, 6000);
     }
   } else if (removed) {
     data.receiptImageUrl = null;
