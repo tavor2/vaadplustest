@@ -804,6 +804,7 @@
       <button class="tab-btn" onclick="setPayView('list',this)">רשימה</button>
       <button class="tab-btn" onclick="setPayView('expenses',this)">הוצאות</button>
       <button class="tab-btn" onclick="setPayView('balance',this)">מאזן</button>
+      <button class="tab-btn" onclick="setPayView('forecast',this)">תחזית</button>
     </div>
 
     <div class="screen-body">
@@ -829,6 +830,10 @@
       <!-- Balance view -->
       <div id="pay-view-balance" style="display:none">
         <div id="balance-content"></div>
+      </div>
+      <!-- Forecast view -->
+      <div id="pay-view-forecast" style="display:none">
+        <div id="forecast-content"></div>
       </div>
     </div>
     <button class="fab" id="fab-expense" onclick="openAddExpense()">+</button>
@@ -1858,7 +1863,7 @@ window.confirmDeleteBuilding = async () => {
 };
 
 // ===== SUPER ADMIN =====
-const APP_VERSION = '2.6.1'; // שיפור חיווי ויזואלי בהעלאת תמונת קבלה (מעבד/הצליח/נכשל) והארכת זמן הודעת שגיאה, לצורך אבחון כישלון העלאה
+const APP_VERSION = '2.7.0'; // הוספת טאב "תחזית" בכספים — תחזית יתרה ל-6 חודשים קדימה מבוססת הכנסה צפויה + ממוצע הוצאות שוטפות, עם אפשרות להוסיף הוצאות ידועות מראש (forecastExpenses)
 const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
@@ -3227,9 +3232,11 @@ window.setPayView = (view, btn) => {
   document.getElementById('pay-view-list').style.display = view === 'list' ? '' : 'none';
   document.getElementById('pay-view-expenses').style.display = view === 'expenses' ? '' : 'none';
   document.getElementById('pay-view-balance').style.display = view === 'balance' ? '' : 'none';
+  document.getElementById('pay-view-forecast').style.display = view === 'forecast' ? '' : 'none';
   document.getElementById('fab-expense').classList.toggle('visible', view === 'expenses' && isAdmin);
   if (view === 'expenses') loadExpenses();
   if (view === 'balance') loadBalance();
+  if (view === 'forecast') loadForecast();
 };
 
 window.markPaid = async (apt, name, amount) => {
@@ -4149,6 +4156,175 @@ function renderBalance() {
   html += '</div>';
   container.innerHTML = html;
 }
+
+// ===== FORECAST =====
+const RECURRING_EXPENSE_CATEGORIES = ['חשמל','מים','ניקיון','מעלית','ביטוח','כיבוי אש','עמלות בנק'];
+const FORECAST_MONTHS_AHEAD = 6;
+const FORECAST_HISTORY_MONTHS = 6; // כמה חודשים אחורה משמשים לחישוב ממוצע ההוצאות השוטפות
+
+let allForecastExpenses = [];
+let unsubForecastExpenses = null;
+let forecastListenerBuildingId = null;
+
+function ensureForecastListener() {
+  if (forecastListenerBuildingId === buildingId && unsubForecastExpenses) return;
+  if (unsubForecastExpenses) unsubForecastExpenses();
+  forecastListenerBuildingId = buildingId;
+  unsubForecastExpenses = onSnapshot(
+    query(collection(db, 'buildings', buildingId, 'forecastExpenses'), orderBy('month','asc')),
+    (snap) => { allForecastExpenses = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderForecast(); },
+    () => { allForecastExpenses = []; renderForecast(); }
+  );
+}
+
+function loadForecast() {
+  const container = document.getElementById('forecast-content');
+  const alreadyListening = forecastListenerBuildingId === buildingId && unsubForecastExpenses;
+  if (!alreadyListening) container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  ensureBalanceListeners(); // גם מפעיל ensureExpensesListener פנימית — allExpenses זמין
+  ensureForecastListener();
+  if (alreadyListening) renderForecast();
+}
+
+// ממוצע חודשי להוצאות שוטפות/קבועות בלבד (RECURRING_EXPENSE_CATEGORIES) על
+// FORECAST_HISTORY_MONTHS החודשים האחרונים. הוצאות מקטגוריות חד-פעמיות
+// (תיקון/גינון/אחר) לא נכללות בחישוב — הן היו מעוותות "חודש טיפוסי" —
+// ומוצגות בנפרד כהערת מידע בלבד.
+function computeRecurringMonthlyAverage() {
+  const now = new Date();
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - FORECAST_HISTORY_MONTHS, 1);
+  const cutoffStr = cutoff.getFullYear() + '-' + String(cutoff.getMonth()+1).padStart(2,'0') + '-01';
+
+  const recurring = allExpenses.filter(e => RECURRING_EXPENSE_CATEGORIES.includes(e.category) && (e.date||'') >= cutoffStr);
+  const oneOff = allExpenses.filter(e => !RECURRING_EXPENSE_CATEGORIES.includes(e.category) && (e.date||'') >= cutoffStr);
+
+  return {
+    recurringMonthlyAvg: recurring.reduce((s,e) => s + (e.amount||0), 0) / FORECAST_HISTORY_MONTHS,
+    oneOffMonthlyAvg: oneOff.reduce((s,e) => s + (e.amount||0), 0) / FORECAST_HISTORY_MONTHS
+  };
+}
+
+// בונה סדרה של FORECAST_MONTHS_AHEAD חודשים קדימה. הוצאות ידועות מראש
+// (forecastExpenses) מוחלות בדיוק בחודש שהמנהל שיבץ אותן אליו.
+function buildForecastSeries(startingBalance, monthlyIncome, recurringMonthlyAvg) {
+  const now = new Date();
+  const series = [];
+  let balance = startingBalance;
+  for (let i = 1; i <= FORECAST_MONTHS_AHEAD; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    const knownForMonth = allForecastExpenses.filter(f => f.month === ym).reduce((s,f) => s + (f.amount||0), 0);
+    const netChange = monthlyIncome - recurringMonthlyAvg - knownForMonth;
+    balance += netChange;
+    series.push({ ym, label: monthLabel(ym), income: monthlyIncome, recurring: recurringMonthlyAvg, known: knownForMonth, balance });
+  }
+  return series;
+}
+
+function renderForecast() {
+  const container = document.getElementById('forecast-content');
+  if (!container) return;
+  if (!isAdmin) { container.innerHTML = '<div class="card-empty">התחזית זמינה לועד הבית בלבד</div>'; return; }
+
+  const monthlyIncome = allResidents.reduce((s,r) => s + aptFee(r.apt, r), 0);
+  const { recurringMonthlyAvg, oneOffMonthlyAvg } = computeRecurringMonthlyAverage();
+  const openingBalance = buildingData?.openingBalance || 0;
+  const cashOpeningBalance = buildingData?.cashOpeningBalance || 0;
+  const { balance: currentBalance } = computeBalanceFigures(balPaymentsAll, allExpenses, balDepositsAll, openingBalance, cashOpeningBalance);
+  const series = buildForecastSeries(currentBalance, monthlyIncome, recurringMonthlyAvg);
+  const maxBalance = Math.max(currentBalance, ...series.map(s => s.balance), 1);
+  const minBalance = Math.min(currentBalance, ...series.map(s => s.balance), 0);
+  const range = (maxBalance - minBalance) || 1;
+
+  let html = '<div style="padding:16px;">';
+
+  html += '<div class="card" style="margin-bottom:14px;font-size:13px;color:var(--gray-600);line-height:1.8;">'
+    + '<div style="font-weight:700;margin-bottom:6px;color:var(--gray-800);">📊 הנחות התחזית</div>'
+    + '<div>💰 הכנסה חודשית צפויה: <strong>' + fmtCurrency(monthlyIncome) + '</strong> (בהנחת גבייה מלאה)</div>'
+    + '<div>📉 הוצאות שוטפות ממוצעות: <strong>' + fmtCurrency(recurringMonthlyAvg) + '</strong> לחודש (ממוצע ' + FORECAST_HISTORY_MONTHS + ' חודשים אחרונים)</div>'
+    + (oneOffMonthlyAvg > 0 ? '<div style="color:var(--orange);">⚠️ בממוצע ' + fmtCurrency(oneOffMonthlyAvg) + ' לחודש בהוצאות לא-קבועות (תיקונים/גינון/אחר) — <u>לא</u> נכלל בתחזית</div>' : '')
+    + '</div>';
+
+  html += '<div class="card" style="margin-bottom:14px;">'
+    + '<div style="font-weight:700;margin-bottom:12px;">תחזית יתרה — ' + FORECAST_MONTHS_AHEAD + ' חודשים קדימה</div>'
+    + '<div style="display:flex;align-items:flex-end;gap:6px;height:140px;padding:0 4px;">'
+    + series.map(s => {
+        const heightPct = Math.max(4, Math.round(((s.balance - minBalance) / range) * 100));
+        const barColor = s.balance >= 0 ? 'var(--green)' : 'var(--red)';
+        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;">'
+          + '<div style="font-size:10px;color:var(--gray-400);margin-bottom:2px;white-space:nowrap;">' + Math.round(s.balance).toLocaleString('he-IL') + '</div>'
+          + '<div style="width:100%;background:' + barColor + ';border-radius:4px 4px 0 0;height:' + heightPct + '%;"></div></div>';
+      }).join('')
+    + '</div>'
+    + '<div style="display:flex;gap:6px;padding:0 4px;margin-top:6px;">'
+    + series.map(s => '<div style="flex:1;text-align:center;font-size:10px;color:var(--gray-400);">' + s.label.split(' ')[0] + '</div>').join('')
+    + '</div></div>';
+
+  html += '<div class="card" style="margin-bottom:14px;padding:0;overflow:hidden;"><div style="overflow-x:auto;">'
+    + '<table class="po-table"><thead><tr><th>חודש</th><th>הכנסה</th><th>הוצאות שוטפות</th><th>ידוע מראש</th><th>יתרה חזויה</th></tr></thead><tbody>'
+    + series.map(s => '<tr>'
+        + '<td>' + s.label + '</td>'
+        + '<td style="color:var(--green);">' + fmtCurrency(s.income) + '</td>'
+        + '<td style="color:var(--red);">' + fmtCurrency(s.recurring) + '</td>'
+        + '<td style="color:' + (s.known ? 'var(--orange)' : 'var(--gray-400)') + ';">' + (s.known ? fmtCurrency(s.known) : '-') + '</td>'
+        + '<td style="font-weight:700;color:' + (s.balance >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + fmtCurrency(s.balance) + '</td>'
+        + '</tr>').join('')
+    + '</tbody></table></div></div>';
+
+  html += '<div class="card"><div style="font-weight:700;margin-bottom:10px;">🗓️ הוצאות ידועות מראש</div>'
+    + '<div style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">הוצאות גדולות שכבר ידועות מראש (למשל שיפוץ מעלית) — יופיעו בתחזית בחודש שתבחר.</div>';
+
+  html += allForecastExpenses.length
+    ? allForecastExpenses.map(f =>
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--gray-100);">'
+        + '<div><div style="font-weight:600;font-size:13px;">' + f.description + '</div>'
+        + '<div style="font-size:11px;color:var(--gray-400);">' + monthLabel(f.month) + ' • ' + fmtCurrency(f.amount) + '</div></div>'
+        + '<button class="btn-danger" style="padding:5px 10px;font-size:11px;" onclick="deleteForecastExpense(\'' + f.id + '\')">🗑</button></div>'
+      ).join('')
+    : '<div style="font-size:12px;color:var(--gray-400);text-align:center;padding:8px 0;">אין הוצאות ידועות מראש</div>';
+
+  const now = new Date();
+  const monthOptionsHtml = [];
+  for (let i = 0; i <= FORECAST_MONTHS_AHEAD + 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    monthOptionsHtml.push('<option value="' + ym + '">' + monthLabel(ym) + '</option>');
+  }
+  html += '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--gray-100);">'
+    + '<div class="form-group" style="margin-bottom:8px;"><input class="form-input" id="fc-desc" placeholder="תיאור (לדוגמה: שיפוץ מעלית)"/></div>'
+    + '<div class="form-row" style="margin-bottom:8px;">'
+    + '<select class="form-select" id="fc-month">' + monthOptionsHtml.join('') + '</select>'
+    + '<input class="form-input" id="fc-amount" type="number" step="0.01" placeholder="סכום (₪)"/></div>'
+    + '<button class="btn-primary" style="margin-top:0;" onclick="addForecastExpense()">➕ הוסף להוצאות ידועות</button>'
+    + '</div></div></div>';
+
+  container.innerHTML = html;
+}
+
+window.addForecastExpense = async () => {
+  if (!isAdmin) { showToast('אין הרשאה'); return; }
+  const desc = document.getElementById('fc-desc').value.trim();
+  const month = document.getElementById('fc-month').value;
+  const amount = parseFloat(document.getElementById('fc-amount').value);
+  if (!desc || !month || !amount) { showToast('חובה למלא תיאור, חודש וסכום'); return; }
+  try {
+    await addDoc(collection(db, 'buildings', buildingId, 'forecastExpenses'), {
+      description: desc, month, amount, createdAt: serverTimestamp(), createdBy: currentUser.uid
+    });
+    document.getElementById('fc-desc').value = '';
+    document.getElementById('fc-amount').value = '';
+    showToast('✅ נוסף לתחזית');
+  } catch(e) { showToast('שגיאה: ' + e.message); }
+};
+
+window.deleteForecastExpense = async (id) => {
+  if (!isAdmin) { showToast('אין הרשאה'); return; }
+  if (!(await customConfirm('למחוק הוצאה זו מהתחזית?'))) return;
+  try {
+    await deleteDoc(doc(db, 'buildings', buildingId, 'forecastExpenses', id));
+    showToast('🗑 הוסר מהתחזית');
+  } catch(e) { showToast('שגיאה: ' + e.message); }
+};
 
 // ===== EXPORT EXCEL =====
 window.exportExcel = async () => {
