@@ -1119,8 +1119,12 @@
         <img id="exp-receipt-preview" style="width:120px;height:120px;object-fit:cover;border-radius:10px;border:1.5px solid var(--gray-200);"/>
         <button type="button" onclick="removeExpenseReceiptImage()" style="position:absolute;top:-8px;left:-8px;background:var(--red);color:white;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;cursor:pointer;">✕</button>
       </div>
-      <input type="file" accept="image/*" id="exp-receipt-file" style="display:none;" onchange="onExpenseReceiptFileSelected(event)"/>
-      <button type="button" class="btn-icon" style="width:100%;" onclick="document.getElementById('exp-receipt-file').click()">📎 צלם/בחר תמונה</button>
+      <input type="file" accept="image/*" capture="environment" id="exp-receipt-file-camera" style="display:none;" onchange="onExpenseReceiptFileSelected(event)"/>
+      <input type="file" accept="image/*" id="exp-receipt-file-gallery" style="display:none;" onchange="onExpenseReceiptFileSelected(event)"/>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn-icon" style="flex:1;" onclick="document.getElementById('exp-receipt-file-camera').click()">📷 צלם תמונה</button>
+        <button type="button" class="btn-icon" style="flex:1;" onclick="document.getElementById('exp-receipt-file-gallery').click()">🖼️ בחר מהגלריה</button>
+      </div>
       <div id="exp-receipt-note" style="font-size:13px;font-weight:600;color:var(--blue);margin-top:4px;"></div>
     </div>
     <button class="btn-primary" onclick="saveExpense()">שמור הוצאה</button>
