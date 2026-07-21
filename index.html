@@ -412,6 +412,7 @@
     <button class="btn-primary" style="background:rgba(255,255,255,0.15);color:#fff;border:2px solid rgba(255,255,255,0.4);font-size:16px;padding:16px;" onclick="openSystemSettings()">
       ⚙️ הגדרות מערכת
     </button>
+    <button class="btn-secondary" style="background:transparent;color:rgba(255,255,255,0.5);font-size:12px;border:1px dashed rgba(255,255,255,0.3);" onclick="runResidentEmailsMigration()">🔧 מיגרציה חד-פעמית: residentEmails</button>
     <button class="btn-secondary" style="background:transparent;color:rgba(255,255,255,0.6);border:none;margin-top:8px;" onclick="logout()">התנתק</button>
     <div style="color:rgba(255,255,255,0.35);font-size:11px;margin-top:16px;">v<span id="app-version"></span></div>
   </div>
@@ -483,6 +484,17 @@
         <input class="form-input" id="input-trial-days" type="number" min="0" style="flex:1;"/>
         <button class="btn-success" onclick="saveTrialDays()">שמור</button>
       </div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #eee;margin:16px 0;"/>
+
+    <div class="form-group">
+      <label class="form-label">📷 אילו קטגוריות הוצאה מאפשרות צירוף קבלה</label>
+      <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px;line-height:1.6;">
+        הוצאות שוטפות/קבועות (חשמל, מים, ביטוח, גינון, מעלית וכו') כבר מופיעות בדף חשבון הבנק מדי חודש ולרוב אינן דורשות קבלה נפרדת. אפשר להגביל את אפשרות צירוף התמונה רק לקטגוריות שבאמת דורשות אסמכתא (למשל תיקונים ורכישות שונות) — זה גם חוסך מקום ב-Firebase Storage. תמונות שכבר צורפו להוצאות קיימות בקטגוריה שתבטל לא יימחקו — רק לא ניתן יהיה לצרף תמונה חדשה מאותה קטגוריה.
+      </div>
+      <div id="receipt-cat-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;"></div>
+      <button class="btn-success" style="width:100%;" onclick="saveReceiptCategories()">שמור</button>
     </div>
 
     <hr style="border:none;border-top:1px solid #eee;margin:16px 0;"/>
@@ -1074,7 +1086,7 @@
     <input type="hidden" id="edit-expense-id"/>
     <div class="form-group">
       <label class="form-label">קטגוריה *</label>
-      <select class="form-select" id="exp-cat" onchange="toggleExpenseContractorFields()">
+      <select class="form-select" id="exp-cat" onchange="onExpenseCategoryChange()">
         <option value="חשמל">חשמל</option>
         <option value="מים">מים</option>
         <option value="ניקיון">ניקיון</option>
@@ -1116,7 +1128,7 @@
       <label class="form-label">תאריך</label>
       <input class="form-input" id="exp-date" type="date"/>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="exp-receipt-section">
       <label class="form-label">📷 צילום קבלה/חשבונית (אופציונלי)</label>
       <input type="hidden" id="exp-receipt-url"/>
       <input type="hidden" id="exp-receipt-removed" value="false"/>
@@ -1126,11 +1138,12 @@
       </div>
       <input type="file" accept="image/*" capture="environment" id="exp-receipt-file-camera" style="display:none;" onchange="onExpenseReceiptFileSelected(event)"/>
       <input type="file" accept="image/*" id="exp-receipt-file-gallery" style="display:none;" onchange="onExpenseReceiptFileSelected(event)"/>
-      <div style="display:flex;gap:8px;">
+      <div id="exp-receipt-upload-buttons" style="display:flex;gap:8px;">
         <button type="button" class="btn-icon" style="flex:1;" onclick="document.getElementById('exp-receipt-file-camera').click()">📷 צלם תמונה</button>
         <button type="button" class="btn-icon" style="flex:1;" onclick="document.getElementById('exp-receipt-file-gallery').click()">🖼️ בחר מהגלריה</button>
       </div>
       <div id="exp-receipt-note" style="font-size:13px;font-weight:600;color:var(--blue);margin-top:4px;"></div>
+      <div id="exp-receipt-disabled-note" style="display:none;font-size:12px;color:var(--gray-500);margin-top:4px;line-height:1.6;">קטגוריה זו הוגדרה על ידי מנהל המערכת כלא-דורשת קבלה (הוצאה שוטפת שמופיעה בדף הבנק).</div>
     </div>
     <button class="btn-primary" onclick="saveExpense()">שמור הוצאה</button>
     <button class="btn-secondary" onclick="closeModal('modal-expense')">ביטול</button>
@@ -1151,6 +1164,7 @@
       <button class="btn-primary" onclick="closeAdminFinance();openLog();">📋 יומן פעולות</button>
       <button class="btn-primary" onclick="closeAdminFinance();openPaymentReminders();">🔔 תזכורות תשלום</button>
       <button class="btn-primary" onclick="closeAdminFinance();generatePDF();">📄 הפק PDF שנתי</button>
+      <button class="btn-primary" onclick="closeAdminFinance();generateMonthlyPDF();">🗓️ הפק PDF חודשי</button>
       <button class="btn-primary" onclick="closeAdminFinance();exportExcel();">📊 ייצוא לאקסל שנתי</button>
       <hr style="border:none;border-top:1px solid #eee;margin:4px 0;"/>
       <div class="form-group" style="margin:0;">
@@ -1863,14 +1877,16 @@ window.confirmDeleteBuilding = async () => {
 };
 
 // ===== SUPER ADMIN =====
-const APP_VERSION = '2.7.0'; // הוספת טאב "תחזית" בכספים — תחזית יתרה ל-6 חודשים קדימה מבוססת הכנסה צפויה + ממוצע הוצאות שוטפות, עם אפשרות להוסיף הוצאות ידועות מראש (forecastExpenses)
+const APP_VERSION = '2.7.5'; // תוקן באג: סלקטור החודש במסך כספים לא כלל חודשים עתידיים באותה שנה, ובתיקון הראשוני הרשימה יצאה לא ממוינת כרונולוגית (עבר ועתיד נבנו כשני טווחים נפרדים ופשוט חוברו). כעת כל החודשים ממוינים ברשימה אחת רציפה, מהמאוחר למוקדם
 const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
 const MAX_CO_ADMINS_DEFAULT = 1; // Default fallback if meta/settings.maxCoAdmins doesn't exist yet — matches the original hardcoded "1 additional committee member" limit.
 const REMINDER_THRESHOLD_DEFAULT = 3; // Default fallback if buildingData.reminderThresholdMonths doesn't exist yet (per-building setting, not global — each vaad sets its own via saveReminderThreshold()).
+const RECEIPT_ENABLED_CATEGORIES_DEFAULT = ['תיקון', 'אחר']; // Default fallback if meta/settings.receiptEnabledCategories doesn't exist yet. Per feedback from several vaadim: recurring/fixed expenses (חשמל, מים, ביטוח, גינון, מעלית, כיבוי אש, עמלות בנק) already show up on the bank statement every month and don't need a separately-attached receipt — only one-off repairs and misc purchases ("אחר") really benefit from a photo.
 let trialDaysSetting = TRIAL_DAYS; // Effective trial length in days, loaded from meta/settings.trialDays on app load (see loadSessionSettings()).
 let maxCoAdminsSetting = MAX_CO_ADMINS_DEFAULT; // Effective max number of additional committee members (beyond the primary admin) allowed per building, loaded from meta/settings.maxCoAdmins.
+let receiptEnabledCategoriesSetting = RECEIPT_ENABLED_CATEGORIES_DEFAULT; // Effective list of expense categories that may have a receipt photo attached, loaded from meta/settings.receiptEnabledCategories.
 
 // Reads Super-Admin-configurable session-wide settings (trial length, max
 // committee members) from meta/settings in a single read and updates the
@@ -1884,9 +1900,11 @@ async function loadSessionSettings() {
     const settings = snap.exists() ? snap.data() : {};
     trialDaysSetting = settings.trialDays ?? TRIAL_DAYS;
     maxCoAdminsSetting = settings.maxCoAdmins ?? MAX_CO_ADMINS_DEFAULT;
+    receiptEnabledCategoriesSetting = settings.receiptEnabledCategories ?? RECEIPT_ENABLED_CATEGORIES_DEFAULT;
   } catch(e) {
     trialDaysSetting = TRIAL_DAYS;
     maxCoAdminsSetting = MAX_CO_ADMINS_DEFAULT;
+    receiptEnabledCategoriesSetting = RECEIPT_ENABLED_CATEGORIES_DEFAULT;
   }
 }
 
@@ -2108,6 +2126,14 @@ window.openSystemSettings = async () => {
     document.getElementById('input-apt-tier2-price').value = aptTier2Price;
     document.getElementById('input-apt-tier3-price').value = aptTier3Price;
     document.getElementById('input-max-co-admins').value = maxCoAdmins;
+
+    const receiptCats = settings.receiptEnabledCategories ?? RECEIPT_ENABLED_CATEGORIES_DEFAULT;
+    document.getElementById('receipt-cat-checkboxes').innerHTML = Object.keys(EXPENSE_CATEGORY_ICONS).map(cat => `
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" class="receipt-cat-chk" value="${cat}" ${receiptCats.includes(cat) ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;"/>
+        ${EXPENSE_CATEGORY_ICONS[cat]} ${cat}
+      </label>
+    `).join('');
   } catch(e) {
     showToast('שגיאה בטעינת ההגדרות: ' + e.message);
   }
@@ -2142,6 +2168,15 @@ window.saveMaxCoAdmins = async () => {
     note.textContent = `✅ נשמר: ${newMax} חברי ועד נוספים מקסימום`;
     note.style.color = 'var(--green)';
     showToast('✅ המגבלה עודכנה');
+  } catch(e) { showToast('שגיאה: ' + e.message); }
+};
+
+window.saveReceiptCategories = async () => {
+  const selected = [...document.querySelectorAll('.receipt-cat-chk:checked')].map(c => c.value);
+  try {
+    await setDoc(doc(db, 'meta', 'settings'), { receiptEnabledCategories: selected }, { merge: true });
+    receiptEnabledCategoriesSetting = selected; // עדכן מיידית גם עבור הבניין הנוכחי בסשן הזה
+    showToast('✅ קטגוריות הקבלות עודכנו');
   } catch(e) { showToast('שגיאה: ' + e.message); }
 };
 
@@ -2411,6 +2446,10 @@ window.executeRestoreBuilding = async (event) => {
           await addDoc(collection(db, 'buildings', newBuildingId, colName), fields);
         }
         imported++;
+
+        if (colName === 'residents' && fields.email) {
+          try { await setDoc(doc(db, 'buildings', newBuildingId, 'residentEmails', fields.email), { residentId: id || null, role: fields.role || 'tenant' }, { merge: true }); } catch(e) { /* לא קריטי */ }
+        }
       }
     }
 
@@ -2421,6 +2460,32 @@ window.executeRestoreBuilding = async (event) => {
   } catch(e) {
     showToast('שגיאה בשחזור: ' + e.message);
   }
+};
+
+// מיגרציה חד-פעמית: ממלאת buildings/{id}/residentEmails/{email} עבור כל
+// הדיירים הקיימים היום בכל הבניינים, לפני שה-Security Rules מתעדכנים
+// להסתמך על האוסף הזה (isResidentOfBuilding). ניתן להריץ כמה פעמים בלי
+// נזק — רק מוסיפה/מעדכנת, לא מוחקת.
+window.runResidentEmailsMigration = async () => {
+  if (auth.currentUser?.email !== SUPER_ADMIN_EMAIL) { showToast('Super Admin בלבד'); return; }
+  const ok = await customConfirm('להריץ מיגרציה חד-פעמית שממלאת residentEmails לכל הדיירים הקיימים בכל הבניינים?\n\nלא מוחקת כלום — רק מוסיפה. אפשר להריץ כמה פעמים בלי נזק.');
+  if (!ok) return;
+  showToast('מריץ מיגרציה...');
+  try {
+    const buildingsSnap = await getDocs(collection(db, 'buildings'));
+    let totalResidents = 0, totalWritten = 0;
+    for (const bDoc of buildingsSnap.docs) {
+      const residentsSnap = await getDocs(collection(db, 'buildings', bDoc.id, 'residents'));
+      for (const rDoc of residentsSnap.docs) {
+        totalResidents++;
+        const r = rDoc.data();
+        if (!r.email) continue;
+        await setDoc(doc(db, 'buildings', bDoc.id, 'residentEmails', r.email), { residentId: rDoc.id, role: r.role || 'tenant' }, { merge: true });
+        totalWritten++;
+      }
+    }
+    showToast(`✅ מיגרציה הושלמה: ${totalWritten}/${totalResidents} דיירים עם אימייל`);
+  } catch(e) { showToast('שגיאה במיגרציה: ' + e.message); }
 };
 
 window.showSetupAsNewAdmin = () => {
@@ -2555,17 +2620,32 @@ function initUI() {
   }
 
   // Month selector
+  // אוספים לקבוצה אחת גם את 12 החודשים האחרונים וגם את שאר חודשי השנה
+  // הנוכחית שעוד לא הגיעו (כדי לצפות/לנהל תשלומים שנרשמו מראש — למשל דרך
+  // תא "חודש עתידי" בהיסטוריית דייר, או העברה חריגה שמכסה חודשים קדימה),
+  // ואז ממיינים כרונולוגית יורד (מהמאוחר למוקדם) כרשימה אחת רציפה. בעבר
+  // שני הטווחים נבנו בלולאות נפרדות ופשוט חוברו זה אחרי זה — מה שיצר קפיצה
+  // מבלבלת בסדר (למשל "אוגוסט 2025" ואז מיד "אוגוסט 2026").
   const sel = document.getElementById('payment-month-select');
   sel.innerHTML = '';
   const now = new Date();
+  const currentYm = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  const ymsSet = new Set();
   for (let i = 0; i < 12; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    ymsSet.add(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'));
+  }
+  for (let m = now.getMonth() + 1; m <= 11; m++) {
+    const d = new Date(now.getFullYear(), m, 1);
+    ymsSet.add(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'));
+  }
+  [...ymsSet].sort().reverse().forEach(ym => {
     const opt = document.createElement('option');
     opt.value = ym;
     opt.textContent = monthLabel(ym);
     sel.appendChild(opt);
-  }
+  });
+  sel.value = currentYm;
 }
 
 // ===== NAVIGATION =====
@@ -2754,7 +2834,11 @@ window.deleteResident = async () => {
   if (!id) return;
   if (!(await customConfirm('למחוק את הדייר? פעולה זו אינה הפיכה.'))) return;
   try {
+    const resident = allResidents.find(r => r.id === id);
     await deleteDoc(doc(db, 'buildings', buildingId, 'residents', id));
+    if (resident?.email) {
+      try { await deleteDoc(doc(db, 'buildings', buildingId, 'residentEmails', resident.email)); } catch(e) { /* לא קריטי */ }
+    }
     showToast('🗑️ הדייר נמחק');
     closeModal('modal-resident');
   } catch(e) { showToast('שגיאה: ' + e.message); }
@@ -2918,6 +3002,13 @@ window.importData = async (event) => {
           await addDoc(collection(db, 'buildings', buildingId, colName), fields);
         }
         imported++;
+
+        // שמירה על residentEmails מעודכן — הכרחי כדי שדיירים ששוחזרו/יובאו
+        // יוכלו להמשיך לקרוא תשלומים/הוצאות/תקלות של הבניין שלהם (ראה
+        // isResidentOfBuilding ב-Security Rules).
+        if (colName === 'residents' && fields.email) {
+          try { await setDoc(doc(db, 'buildings', buildingId, 'residentEmails', fields.email), { residentId: id || null, role: fields.role || 'tenant' }, { merge: true }); } catch(e) { /* לא קריטי */ }
+        }
       }
     }
     showToast(`✅ יובאו ${imported} רשומות בהצלחה`);
@@ -2930,6 +3021,8 @@ window.saveResident = async () => {
   if (!isAdmin) { showToast('אין הרשאה'); return; }
 
   const id = document.getElementById('edit-resident-id').value;
+  const oldResident = id ? allResidents.find(r => r.id === id) : null;
+  const oldEmail = oldResident?.email || '';
   const apt = document.getElementById('r-apt').value.trim();
   const name = document.getElementById('r-name').value.trim();
   if (!apt || !name) { showToast('חובה למלא דירה ושם'); return; }
@@ -2997,13 +3090,25 @@ window.saveResident = async () => {
   }
 
   try {
+    let residentDocId = id;
     if (id) {
       await updateDoc(doc(db, 'buildings', buildingId, 'residents', id), data);
       showToast('✅ הדייר עודכן');
     } else {
       data.createdAt = serverTimestamp();
-      await addDoc(collection(db, 'buildings', buildingId, 'residents'), data);
+      const newRef = await addDoc(collection(db, 'buildings', buildingId, 'residents'), data);
+      residentDocId = newRef.id;
       showToast('✅ הדייר נוסף');
+    }
+
+    // residentEmails index — נצרך ע"י Firestore Security Rules (isResidentOfBuilding)
+    // כדי לאמת שדייר קורא רק תשלומים/הוצאות/תקלות/הודעות של הבניין שלו,
+    // בלי לחשוף מידע של בניינים אחרים. קיום המסמך הוא כל מה שחשוב לחוקים.
+    if (oldEmail && oldEmail !== email) {
+      try { await deleteDoc(doc(db, 'buildings', buildingId, 'residentEmails', oldEmail)); } catch(e) { /* לא קריטי */ }
+    }
+    if (email) {
+      try { await setDoc(doc(db, 'buildings', buildingId, 'residentEmails', email), { residentId: residentDocId, role }, { merge: true }); } catch(e) { /* לא קריטי */ }
     }
 
     if (email) {
@@ -3837,13 +3942,34 @@ window.removeExpenseReceiptImage = () => {
   if (_expReceiptOriginalUrl) document.getElementById('exp-receipt-removed').value = 'true';
 };
 
-// Shows the contractor name/phone fields only when the "תיקון" (repair)
-// category is selected — those two fields are irrelevant for every other
-// expense category and stay hidden (and get cleared on save, see
-// saveExpense()) otherwise.
-window.toggleExpenseContractorFields = () => {
-  const isRepair = document.getElementById('exp-cat').value === 'תיקון';
+// True if the given expense category is currently allowed to have a
+// receipt photo attached, per the Super Admin's meta/settings.receiptEnabledCategories
+// (see saveReceiptCategories()). Default: only 'תיקון' and 'אחר' — recurring/
+// fixed expenses (electricity, water, insurance, etc.) already show up on
+// the bank statement every month and don't need a separately-attached receipt.
+function categoryAllowsReceipt(category) {
+  return receiptEnabledCategoriesSetting.includes(category);
+}
+
+// Shows/hides the contractor name/phone fields (only for "תיקון") and the
+// receipt-photo section (only for categories the Super Admin has enabled)
+// whenever the expense category changes. Renamed from
+// toggleExpenseContractorFields() now that it covers more than just the
+// contractor fields.
+// Edge case: if this expense already has a photo attached (from before the
+// category was disabled, or before this feature existed), we still show the
+// section — so the existing photo stays visible/removable — but hide just
+// the upload buttons, so a new photo can't be added to a now-disabled category.
+window.onExpenseCategoryChange = () => {
+  const cat = document.getElementById('exp-cat').value;
+  const isRepair = cat === 'תיקון';
   document.getElementById('exp-contractor-fields').style.display = isRepair ? '' : 'none';
+
+  const allowed = categoryAllowsReceipt(cat);
+  const hasExistingPhoto = !!_expReceiptOriginalUrl || !!_expReceiptPendingFile;
+  document.getElementById('exp-receipt-section').style.display = (allowed || hasExistingPhoto) ? '' : 'none';
+  document.getElementById('exp-receipt-upload-buttons').style.display = allowed ? '' : 'none';
+  document.getElementById('exp-receipt-disabled-note').style.display = (!allowed && hasExistingPhoto) ? '' : 'none';
 };
 
 window.openAddExpense = () => {
@@ -3864,7 +3990,7 @@ window.openAddExpense = () => {
   document.getElementById('exp-receipt-preview-wrap').style.display = 'none';
   document.getElementById('exp-receipt-preview').src = '';
   document.getElementById('exp-receipt-note').textContent = '';
-  toggleExpenseContractorFields();
+  onExpenseCategoryChange();
   openModal('modal-expense');
 };
 
@@ -3895,7 +4021,7 @@ window.editExpense = (id) => {
     document.getElementById('exp-receipt-preview').src = '';
     document.getElementById('exp-receipt-preview-wrap').style.display = 'none';
   }
-  toggleExpenseContractorFields();
+  onExpenseCategoryChange();
   openModal('modal-expense');
 };
 
@@ -4908,6 +5034,182 @@ async function createPDFReport() {
   pdfContainer.innerHTML = '';
   showToast('📄 דוח PDF הורד בהצלחה');
   logAnalyticsEvent('pdf_report_generated');
+}
+
+window.generateMonthlyPDF = async () => {
+  if (receiptGenerationInProgress) {
+    showToast('פעולת PDF אחרת עדיין בתהליך, רגע בבקשה...');
+    return;
+  }
+  receiptGenerationInProgress = true;
+  try {
+    showToast('📄 מכין דוח חודשי...');
+    if (!window.html2pdf) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      await new Promise((resolve, reject) => {
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    await createMonthlyPDFReport();
+  } catch(e) {
+    showToast('שגיאה: ' + e.message);
+  } finally {
+    receiptGenerationInProgress = false;
+  }
+};
+
+async function createMonthlyPDFReport() {
+  // דוח נבנה לפי החודש שנבחר בסלקטור של מסך "כספים"
+  const ym = document.getElementById('payment-month-select').value;
+  const monthLbl = monthLabel(ym);
+  // html2canvas + RTL: regular spaces between pure-Hebrew words (and in
+  // mixed Hebrew/number headers) intermittently collapse when rendered —
+  // same root cause documented for the yearly report's category-summary
+  // header. \u00A0 (non-breaking space) is the reliable fix; used below for
+  // every multi-word label in this report.
+  const monthLblNbsp = monthLbl.replace(/ /g, '\u00A0');
+
+  // תשלומי החודש
+  const paySnap = await getDocs(query(collection(db, 'buildings', buildingId, 'payments'), where('month','==', ym)));
+  const paymentMap = {};
+  paySnap.docs.forEach(d => { const p = d.data(); paymentMap[p.apt] = p; });
+
+  const residents = [...allResidents].sort((a,b) => (parseInt(a.apt)||0) - (parseInt(b.apt)||0));
+  let totalCollected = 0, paidCount = 0;
+  const residentRows = residents.map(r => {
+    const fee = aptFee(r.apt, r);
+    const p = paymentMap[r.apt];
+    if (p) { totalCollected += (p.amount || fee); paidCount++; }
+    const statusHtml = p
+      ? '<span style="color:#0E9F6E;font-weight:bold;">✓ שולם</span>'
+      : '<span style="color:#E02424;font-weight:bold;">✗ לא שולם</span>';
+    return `<tr>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;font-weight:bold;">${r.apt}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:right;">${r.name||''}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">${r.floor !== undefined ? r.floor : '-'}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">${statusHtml}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">₪${(p ? (p.amount||fee) : fee).toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">${p ? (PAYMENT_METHOD_ICONS[p.method]||'') : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  const { cash: cashCollectedMonth, bank: bankCollectedMonth } = splitCashBank(paySnap.docs.map(d => d.data()));
+
+  // הוצאות החודש
+  const expSnap = await getDocs(query(
+    collection(db, 'buildings', buildingId, 'expenses'),
+    where('date', '>=', ym + '-01'),
+    where('date', '<=', ym + '-31')
+  ));
+  const expenses = expSnap.docs.map(d => ({id:d.id, ...d.data()}));
+  const totalExpenses = expenses.reduce((s,e) => s + (e.amount||0), 0);
+  const { cash: cashExpensesMonth, bank: bankExpensesMonth } = splitCashBank(expenses);
+  const expenseRows = expenses.map(e => {
+    const methodLabel = e.method === 'cash' ? 'מזומן' : 'בנק';
+    return `<tr>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">${(e.category||'-').replace(/ /g,'\u00A0')}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;font-weight:bold;">₪${(e.amount||0).toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:right;">${(e.description||'-').replace(/ /g,'\u00A0')}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">${e.date||'-'}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">${methodLabel}</td>
+    </tr>`;
+  }).join('');
+  const catTotals = {};
+  expenses.forEach(e => { const cat = e.category || 'אחר'; catTotals[cat] = (catTotals[cat]||0) + (e.amount||0); });
+  const catRowsHtml = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).map(([cat,sum]) => {
+    const pct = totalExpenses ? Math.round(sum/totalExpenses*100) : 0;
+    return `<tr><td style="text-align:right;border:1px solid #ddd;padding:8px;">${cat.replace(/ /g,'\u00A0')}</td>
+      <td style="text-align:center;border:1px solid #ddd;padding:8px;font-weight:bold;">₪${sum.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</td>
+      <td style="text-align:center;border:1px solid #ddd;padding:8px;">${pct}%</td></tr>`;
+  }).join('') || '<tr><td colspan="3" style="text-align:center;border:1px solid #ddd;padding:8px;">אין הוצאות</td></tr>';
+
+  // מאזן מצטבר נכון לסוף החודש הנבחר (לא רק החודש הזה) — עקבי עם computeBalanceFigures
+  const openingBalance = buildingData?.openingBalance || 0;
+  const cashOpeningBalance = buildingData?.cashOpeningBalance || 0;
+  const cumPaySnap = await getDocs(query(collection(db, 'buildings', buildingId, 'payments'), where('month','<=', ym)));
+  const cumExpSnap = await getDocs(query(collection(db, 'buildings', buildingId, 'expenses'), where('date','<=', ym + '-31')));
+  const cumDepSnap = await getDocs(query(collection(db, 'buildings', buildingId, 'cashDeposits'), where('date','<=', ym + '-31')));
+  const { bankBalance, cashBalance } = computeBalanceFigures(
+    cumPaySnap.docs.map(d => d.data()),
+    cumExpSnap.docs.map(d => d.data()),
+    cumDepSnap.docs.map(d => d.data()),
+    openingBalance, cashOpeningBalance
+  );
+  const monthNet = totalCollected - totalExpenses;
+
+  const html = `
+    <html><head><meta charset="utf-8"/><style>
+      body { font-family: Arial, Helvetica, sans-serif; direction: rtl; text-align: right; padding: 20px; word-spacing: normal; }
+      td, th { word-spacing: normal; letter-spacing: normal; word-break: normal; white-space: normal; }
+      h1 { text-align: center; color: #1A56DB; margin-bottom: 5px; }
+      h2 { text-align: center; color: #666; font-size: 16px; margin-top: 0; margin-bottom: 20px; }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+      th { background: #1A56DB; color: white; padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; }
+      td { padding: 8px; border: 1px solid #ddd; }
+      .summary { margin-top: 20px; font-size: 15px; }
+      .summary-line { margin: 8px 0; display:flex; direction:rtl; gap:5px; }
+      .total { font-weight: bold; color: #1A56DB; }
+    </style></head><body>
+      <h1>דוח&nbsp;חודשי&nbsp;—&nbsp;הכנסות,&nbsp;הוצאות&nbsp;ומאזן</h1>
+      <h2>${(buildingData?.address||'').replace(/ /g,'\u00A0')}</h2>
+      <h2>${monthLblNbsp}</h2>
+      <div style="font-size:13px;color:#999;display:flex;justify-content:center;gap:5px;direction:rtl;margin-bottom:16px;">${(() => { const now=new Date(); return '<span>הופק</span><span dir="ltr">'+now.toLocaleDateString('he-IL')+'</span><span>בשעה</span><span dir="ltr">'+now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})+'</span>'; })()}</div>
+
+      <h2>תשלומי&nbsp;דיירים</h2>
+      <table><thead><tr><th>דירה</th><th>שם</th><th>קומה</th><th>סטטוס</th><th>סכום</th><th>אופן</th></tr></thead>
+      <tbody>${residentRows}</tbody></table>
+      <div style="font-size:13px;color:#555;margin-bottom:16px;">${paidCount}&nbsp;מתוך&nbsp;${residents.length}&nbsp;דירות&nbsp;שילמו&nbsp;החודש</div>
+
+      <h2>הוצאות&nbsp;החודש</h2>
+      <table style="table-layout:fixed;"><thead><tr>
+        <th style="width:18%;">קטגוריה</th><th style="width:15%;">סכום</th><th style="width:32%;">תיאור</th><th style="width:17%;">תאריך</th><th style="width:18%;">אופן</th>
+      </tr></thead><tbody>${expenseRows || '<tr><td colspan="5" style="text-align:center;border:1px solid #ddd;padding:8px;">אין הוצאות רשומות החודש</td></tr>'}</tbody></table>
+
+      <h2>סיכום&nbsp;הוצאות&nbsp;לפי&nbsp;קטגוריה</h2>
+      <table style="table-layout:fixed;"><thead><tr><th style="width:50%;">קטגוריה</th><th style="width:30%;">סכום</th><th style="width:20%;">אחוז</th></tr></thead>
+      <tbody>${catRowsHtml}</tbody></table>
+
+      <div class="summary">
+        <div class="summary-line"><span class="total">סה"כ נגבה החודש:</span><span dir="ltr">₪${totalCollected.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+        <div class="summary-line" style="padding-right:16px;font-size:13px;color:#555;"><span>מתוכן העברות/בנק:</span><span dir="ltr">₪${bankCollectedMonth.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+        <div class="summary-line" style="padding-right:16px;font-size:13px;color:#555;"><span>מתוכן מזומן:</span><span dir="ltr">₪${cashCollectedMonth.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+        <div class="summary-line"><span class="total">סה"כ הוצאות החודש:</span><span dir="ltr">₪${totalExpenses.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+        <div class="summary-line" style="padding-right:16px;font-size:13px;color:#555;"><span>מתוכן מהבנק:</span><span dir="ltr">₪${bankExpensesMonth.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+        <div class="summary-line" style="padding-right:16px;font-size:13px;color:#555;"><span>מתוכן מזומן:</span><span dir="ltr">₪${cashExpensesMonth.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+        <div style="border-top:2px solid #000;margin:14px 0;padding:10px 0;">
+          <div class="summary-line"><span class="total">מאזן&nbsp;החודש</span><span dir="ltr" style="color:${monthNet>=0?'#0E9F6E':'#E02424'};font-weight:bold;">₪${monthNet.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+          <div style="font-size:11px;color:#999;margin:-2px 0 10px;">הכנסות&nbsp;פחות&nbsp;הוצאות&nbsp;לחודש&nbsp;${monthLblNbsp}</div>
+          <div class="summary-line"><span class="total">יתרה&nbsp;בחשבון&nbsp;הבנק&nbsp;לסוף&nbsp;${monthLblNbsp}</span><span dir="ltr">₪${bankBalance.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+          <div class="summary-line"><span class="total">יתרת&nbsp;קופת&nbsp;מזומן&nbsp;לסוף&nbsp;${monthLblNbsp}</span><span dir="ltr">₪${cashBalance.toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+          <div class="summary-line"><span class="total">סה"כ&nbsp;יתרה&nbsp;מצטברת</span><span dir="ltr" style="color:${(bankBalance+cashBalance)>=0?'#0E9F6E':'#E02424'};font-weight:bold;">₪${(bankBalance+cashBalance).toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2})}</span></div>
+        </div>
+      </div>
+    </body></html>
+  `;
+
+  const element = document.createElement('div');
+  element.innerHTML = html;
+  const pdfContainer = document.getElementById('pdf-container');
+  pdfContainer.innerHTML = '';
+  pdfContainer.appendChild(element);
+
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  const opt = {
+    margin: 10,
+    filename: `vaad_bait_${ym}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+  };
+
+  await html2pdf().set(opt).from(element).save();
+  pdfContainer.innerHTML = '';
+  showToast('📄 דוח חודשי הורד בהצלחה');
+  logAnalyticsEvent('monthly_pdf_report_generated');
 }
 
 // ===== RESIDENT PAYMENT HISTORY =====
