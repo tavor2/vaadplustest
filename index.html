@@ -1165,6 +1165,7 @@
       <button class="btn-primary" onclick="closeAdminFinance();openPaymentReminders();">🔔 תזכורות תשלום</button>
       <button class="btn-primary" onclick="closeAdminFinance();generatePDF();">📄 הפק PDF שנתי</button>
       <button class="btn-primary" onclick="closeAdminFinance();generateMonthlyPDF();">🗓️ הפק PDF חודשי</button>
+      <button class="btn-primary" onclick="closeAdminFinance();generateSemiAnnualPDF();">📆 הפק PDF חצי שנתי</button>
       <button class="btn-primary" onclick="closeAdminFinance();exportExcel();">📊 ייצוא לאקסל שנתי</button>
       <hr style="border:none;border-top:1px solid #eee;margin:4px 0;"/>
       <div class="form-group" style="margin:0;">
@@ -1877,7 +1878,7 @@ window.confirmDeleteBuilding = async () => {
 };
 
 // ===== SUPER ADMIN =====
-const APP_VERSION = '2.7.5'; // תוקן באג: סלקטור החודש במסך כספים לא כלל חודשים עתידיים באותה שנה, ובתיקון הראשוני הרשימה יצאה לא ממוינת כרונולוגית (עבר ועתיד נבנו כשני טווחים נפרדים ופשוט חוברו). כעת כל החודשים ממוינים ברשימה אחת רציפה, מהמאוחר למוקדם
+const APP_VERSION = '2.7.7'; // תיקון עיצוב בדוח החצי שנתי: הוסרו הסוגריים סביב טווח החודשים (ינואר-יוני / יולי-דצמבר) והוסרו הנקודותיים בשורות יתרות הפתיחה והסגירה (בנק/מזומן/מצטברת).
 const SUPER_ADMIN_EMAIL = 'vaadplus100@gmail.com';
 const BETA_BUILDING_LIMIT = 50; // Stage 1: closed beta cap. Super Admin can override this in Settings without touching code.
 const TRIAL_DAYS = 30; // Default fallback if meta/settings.trialDays doesn't exist yet. Super Admin can override the effective value at runtime — see trialDaysSetting below.
@@ -5210,6 +5211,259 @@ async function createMonthlyPDFReport() {
   pdfContainer.innerHTML = '';
   showToast('📄 דוח חודשי הורד בהצלחה');
   logAnalyticsEvent('monthly_pdf_report_generated');
+}
+
+window.generateSemiAnnualPDF = async () => {
+  if (receiptGenerationInProgress) {
+    showToast('פעולת PDF אחרת עדיין בתהליך, רגע בבקשה...');
+    return;
+  }
+  receiptGenerationInProgress = true;
+  try {
+    showToast('📄 מכין דוח חצי שנתי...');
+    if (!window.html2pdf) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      await new Promise((resolve, reject) => {
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    await createSemiAnnualPDFReport();
+  } catch(e) {
+    showToast('שגיאה: ' + e.message);
+  } finally {
+    receiptGenerationInProgress = false;
+  }
+};
+
+async function createSemiAnnualPDFReport() {
+  // התקופה נקבעת לפי החודש שנבחר בסלקטור של מסך "כספים": מחצית ינואר-יוני
+  // או יולי-דצמבר של אותה שנה, לפי המחצית שבה נמצא החודש שנבחר. אותו עיקרון
+  // כמו createMonthlyPDFReport() שמשתמש בסלקטור הזה לקביעת החודש.
+  const selectedYm = document.getElementById('payment-month-select').value;
+  const nowDate = new Date();
+  const [selYear, selMonth] = selectedYm ? selectedYm.split('-').map(Number) : [nowDate.getFullYear(), nowDate.getMonth()+1];
+  const isFirstHalf = selMonth <= 6;
+  const year = selYear;
+  const startMonthIdx = isFirstHalf ? 0 : 6; // 0-based אינדקס לתוך HEBREW_MONTHS
+  const monthsInHalf = HEBREW_MONTHS.slice(startMonthIdx, startMonthIdx + 6);
+  const fromYm = `${year}-${String(startMonthIdx+1).padStart(2,'0')}`;
+  const toYm = `${year}-${String(startMonthIdx+6).padStart(2,'0')}`;
+  const fromDate = `${fromYm}-01`;
+  const toDateLastDay = isFirstHalf ? `${year}-06-30` : `${year}-12-31`;
+  const halfLabel = isFirstHalf ? `מחצית ראשונה ${year} ינואר–יוני` : `מחצית שנייה ${year} יולי–דצמבר`;
+  const halfLabelNbsp = halfLabel.replace(/ /g, '\u00A0');
+
+  // דיירים ותשלומי התקופה
+  const resSnap = await getDocs(collection(db, 'buildings', buildingId, 'residents'));
+  const residents = resSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => (parseInt(a.apt)||0) - (parseInt(b.apt)||0));
+
+  const paySnap = await getDocs(query(
+    collection(db, 'buildings', buildingId, 'payments'),
+    where('month', '>=', fromYm),
+    where('month', '<=', toYm)
+  ));
+  const paymentMap = {};
+  paySnap.docs.forEach(d => {
+    const p = d.data();
+    paymentMap[p.apt + '_' + p.month] = p;
+  });
+
+  let tableRows = '';
+  let totalCollected = 0;
+  residents.forEach(r => {
+    let rowTotal = 0;
+    let rowHtml = `<tr><td style="font-weight:bold;text-align:center;border:1px solid #ddd;padding:8px;">${r.apt}</td>`;
+    for (let m = 0; m < 6; m++) {
+      const ym = year + '-' + String(startMonthIdx + m + 1).padStart(2,'0');
+      const paid = paymentMap[r.apt + '_' + ym];
+      const fee = aptFee(r.apt, r);
+      if (paid) {
+        rowHtml += `<td style="text-align:center;border:1px solid #ddd;padding:8px;background:#e8f7f2;color:#0E9F6E;font-weight:bold;">✓</td>`;
+        rowTotal += (paid.amount || fee);
+      } else {
+        rowHtml += `<td style="text-align:center;border:1px solid #ddd;padding:8px;">-</td>`;
+      }
+    }
+    rowHtml += `<td style="text-align:center;border:1px solid #ddd;padding:8px;font-weight:bold;">₪${rowTotal.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</td></tr>`;
+    tableRows += rowHtml;
+    totalCollected += rowTotal;
+  });
+
+  // הוצאות התקופה
+  const expSnap = await getDocs(query(
+    collection(db, 'buildings', buildingId, 'expenses'),
+    where('date', '>=', fromDate),
+    where('date', '<=', toDateLastDay),
+    orderBy('date','asc')
+  ));
+  const expenses = expSnap.docs.map(d => ({id: d.id, ...d.data()}));
+  let totalExpenses = 0;
+  const expenseRows = expenses.map(e => {
+    totalExpenses += (e.amount || 0);
+    const methodLabel = e.method === 'cash' ? 'מזומן' : 'בנק';
+    return `<tr>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">${(e.category || '-').replace(/ /g, '\u00A0')}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;font-weight:bold;">₪${(e.amount||0).toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:right;">${(e.description || '-').replace(/ /g, '\u00A0')}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">${e.date || '-'}</td>
+      <td style="border:1px solid #ddd;padding:8px;text-align:center;">${methodLabel}</td>
+    </tr>`;
+  }).join('');
+  const { bank: bankExpensesHalf, cash: cashExpensesHalf } = splitCashBank(expenses);
+
+  // מאזן מצטבר: נקודת פתיחה (לפני fromDate) ונקודת סגירה (עד toDateLastDay) —
+  // אותו עיקרון כמו בדוח החודשי, כדי שהדוח יראה גם את יתרת הפתיחה של המחצית
+  // וגם את היתרה המצטברת בסופה (נדרש לדיווח לפי חוק המקרקעין).
+  const openingBalance = buildingData?.openingBalance || 0;
+  const cashOpeningBalance = buildingData?.cashOpeningBalance || 0;
+
+  const prePaySnap = await getDocs(query(collection(db, 'buildings', buildingId, 'payments'), where('month','<', fromYm)));
+  const preExpSnap = await getDocs(query(collection(db, 'buildings', buildingId, 'expenses'), where('date','<', fromDate)));
+  const preDepSnap = await getDocs(query(collection(db, 'buildings', buildingId, 'cashDeposits'), where('date','<', fromDate)));
+  const { bankBalance: bankBalanceStart, cashBalance: cashBalanceStart } = computeBalanceFigures(
+    prePaySnap.docs.map(d => d.data()),
+    preExpSnap.docs.map(d => d.data()),
+    preDepSnap.docs.map(d => d.data()),
+    openingBalance, cashOpeningBalance
+  );
+
+  const cumPaySnap = await getDocs(query(collection(db, 'buildings', buildingId, 'payments'), where('month','<=', toYm)));
+  const cumExpSnap = await getDocs(query(collection(db, 'buildings', buildingId, 'expenses'), where('date','<=', toDateLastDay)));
+  const cumDepSnap = await getDocs(query(collection(db, 'buildings', buildingId, 'cashDeposits'), where('date','<=', toDateLastDay)));
+  const { bankBalance: bankBalanceEnd, cashBalance: cashBalanceEnd } = computeBalanceFigures(
+    cumPaySnap.docs.map(d => d.data()),
+    cumExpSnap.docs.map(d => d.data()),
+    cumDepSnap.docs.map(d => d.data()),
+    openingBalance, cashOpeningBalance
+  );
+
+  const periodNet = totalCollected - totalExpenses;
+
+  const html = `
+    <html>
+    <head>
+      <meta charset="utf-8"/>
+      <style>
+        body { font-family: Arial, Helvetica, sans-serif; direction: rtl; text-align: right; padding: 20px; unicode-bidi: plaintext; word-spacing: normal; }
+        td, th { word-spacing: normal; letter-spacing: normal; word-break: normal; white-space: normal; }
+        h1 { text-align: center; color: #1A56DB; margin-bottom: 5px; word-spacing: normal; letter-spacing: normal; }
+        h2 { text-align: center; color: #666; font-size: 16px; margin-top: 0; margin-bottom: 20px; word-spacing: normal; letter-spacing: normal; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+        th { background: #1A56DB; color: white; padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; }
+        td { padding: 8px; border: 1px solid #ddd; }
+        .summary { margin-top: 30px; font-size: 16px; }
+        .summary-line { margin: 10px 0; display:flex; direction:rtl; gap:5px; }
+        .total { font-weight: bold; color: #1A56DB; }
+      </style>
+    </head>
+    <body>
+      <h1 style="letter-spacing:4px;">דוח חצי שנתי לוועד הבית</h1>
+      <h2>${(buildingData?.address || '').replace(/ /g, '\u00A0')}</h2>
+      <h2>${halfLabelNbsp}</h2>
+      <div style="font-size:13px;color:#999;display:flex;justify-content:center;gap:5px;direction:rtl;margin-bottom:20px;">${(() => { const d = nowDate.toLocaleDateString('he-IL'); const t = nowDate.toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'}); return '<span>הופק</span><span dir="ltr">' + d + '</span><span>בשעה</span><span dir="ltr">' + t + '</span>'; })()}</div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>דירה</th>
+            ${monthsInHalf.map(m => `<th>${m}</th>`).join('')}
+            <th>סה"כ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+        </tbody>
+      </table>
+
+      <h2>סיכום&nbsp;הוצאות&nbsp;לפי&nbsp;קטגוריה</h2>
+      <table style="width:100%;table-layout:fixed;">
+        <thead>
+          <tr>
+            <th style="width:50%;">קטגוריה</th>
+            <th style="width:30%;">סכום</th>
+            <th style="width:20%;">אחוז</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(() => {
+            const catTotals = {};
+            expenses.forEach(e => {
+              const cat = e.category || 'אחר';
+              catTotals[cat] = (catTotals[cat] || 0) + (e.amount || 0);
+            });
+            return Object.entries(catTotals)
+              .sort((a,b) => b[1]-a[1])
+              .map(([cat, sum]) => {
+                const pct = totalExpenses ? Math.round(sum/totalExpenses*100) : 0;
+                return '<tr><td style="text-align:right;border:1px solid #ddd;padding:8px;">'+cat.replace(/ /g,'\u00A0')+'</td>'
+                  +'<td style="text-align:center;border:1px solid #ddd;padding:8px;font-weight:bold;">₪'+sum.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})+'</td>'
+                  +'<td style="text-align:center;border:1px solid #ddd;padding:8px;">'+pct+'%</td></tr>';
+              }).join('') || '<tr><td colspan="3" style="text-align:center;border:1px solid #ddd;padding:8px;">אין הוצאות</td></tr>';
+          })()}
+        </tbody>
+      </table>
+
+      <h2>פירוט&nbsp;הוצאות&nbsp;${halfLabelNbsp}</h2>
+      <table style="width:100%;table-layout:fixed;">
+        <thead>
+          <tr>
+            <th style="width:18%;">קטגוריה</th>
+            <th style="width:15%;">סכום</th>
+            <th style="width:30%;">תיאור</th>
+            <th style="width:17%;">תאריך</th>
+            <th style="width:20%;">אמצעי תשלום</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${expenseRows || '<tr><td colspan="5" style="text-align:center;border:1px solid #ddd;padding:8px;">אין הוצאות רשומות</td></tr>'}
+        </tbody>
+      </table>
+
+      <div class="summary">
+        <div class="summary-line"><span class="total">סה"כ הכנסות בתקופה:</span><span dir="ltr">₪${totalCollected.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+        <div class="summary-line"><span class="total">סה"כ הוצאות בתקופה:</span><span dir="ltr">₪${totalExpenses.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+        <div class="summary-line" style="padding-right:16px;font-size:14px;color:#555;"><span>מתוכן הוצאות מהבנק:</span><span dir="ltr">₪${bankExpensesHalf.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+        <div class="summary-line" style="padding-right:16px;font-size:14px;color:#555;"><span>מתוכן הוצאות במזומן:</span><span dir="ltr">₪${cashExpensesHalf.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+        <div class="summary-line"><span class="total" style="color:${periodNet>=0?'#0E9F6E':'#E02424'};">מאזן התקופה:</span><span dir="ltr" style="font-weight:bold;color:${periodNet>=0?'#0E9F6E':'#E02424'};">₪${periodNet.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+
+        <div style="border-top:2px solid #000;margin:15px 0;padding:10px 0;">
+          <div class="summary-line"><span class="total">יתרת&nbsp;פתיחה&nbsp;בבנק&nbsp;(תחילת&nbsp;התקופה)</span><span dir="ltr">₪${bankBalanceStart.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+          <div class="summary-line"><span class="total">יתרת&nbsp;פתיחה&nbsp;מזומן&nbsp;(תחילת&nbsp;התקופה)</span><span dir="ltr">₪${cashBalanceStart.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+        </div>
+        <div style="border-top:2px solid #000;margin:15px 0;padding:10px 0;">
+          <div class="summary-line"><span class="total">יתרה&nbsp;בחשבון&nbsp;הבנק&nbsp;(סוף&nbsp;התקופה)</span><span dir="ltr">₪${bankBalanceEnd.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+          <div class="summary-line"><span class="total">יתרת&nbsp;מזומן&nbsp;(סוף&nbsp;התקופה)</span><span dir="ltr">₪${cashBalanceEnd.toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+          <div class="summary-line"><span class="total">סה"כ&nbsp;יתרה&nbsp;מצטברת</span><span dir="ltr" style="font-weight:bold;color:${(bankBalanceEnd+cashBalanceEnd)>=0?'#0E9F6E':'#E02424'};">₪${(bankBalanceEnd+cashBalanceEnd).toLocaleString('he-IL', {minimumFractionDigits:0, maximumFractionDigits:2})}</span></div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const element = document.createElement('div');
+  element.innerHTML = html;
+
+  const pdfContainer = document.getElementById('pdf-container');
+  pdfContainer.innerHTML = '';
+  pdfContainer.appendChild(element);
+
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  const opt = {
+    margin: 10,
+    filename: `vaad_bait_${fromYm}_${toYm}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { orientation: 'landscape', unit: 'mm', format: 'a4' }
+  };
+
+  await html2pdf().set(opt).from(element).save();
+  pdfContainer.innerHTML = '';
+  showToast('📄 דוח חצי שנתי הורד בהצלחה');
+  logAnalyticsEvent('semi_annual_pdf_report_generated');
 }
 
 // ===== RESIDENT PAYMENT HISTORY =====
